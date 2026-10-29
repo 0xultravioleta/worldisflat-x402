@@ -139,10 +139,14 @@ runs (`src/double/`, `scripts/`), the tests (`test/`), and the deploy recipe (`D
 - A replayed payment is not served twice. Bad input is refused before the 402, so nobody pays for a rejected request.
   A failed cashback never fails a paid call; the ledger records why. A call that fails after its settlement still answers
   with the receipt. Error text is stripped of URLs before it is stored or returned (an RPC URL can carry an API key).
-- The merchant wallet is the cashback budget: give it only the $WIF you are willing to give away.
+- The merchant wallet is the cashback budget: give it only the $WIF you are willing to give away. On top of that,
+  `WIF_DAILY_BUDGET` (default 500 $WIF) caps what the server sends per day, cashback and rewards together, so a loop of
+  paid calls (or a worker hiring themselves from a second wallet) cannot drain it faster than that.
 - Hiring and the task board are off without `WORKER_TOKEN` (compared in constant time). Only the worker who claimed a
   task can complete it, and the payer of a task cannot claim it. Workers holding the token are trusted operators.
 - A corrupt `state.json` stops the server instead of being overwritten; `npm run reset` clears it.
+- If the RPC cannot be read when a payment arrives, the payer is charged the standard price, never less: a holder in that
+  moment gets a 402 at the standard price and can pay it or retry.
 
 ## Configuration
 

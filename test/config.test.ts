@@ -35,6 +35,7 @@ test("loadConfig defaults to testnet with USDG prices and no $WIF on testnet", (
   assert.equal(c.prices.askHolder, 50_000n);
   assert.equal(c.wif.token, null);
   assert.equal(c.wif.cashback, 0n);
+  assert.equal(c.wif.dailyBudget, 500n * 10n ** 18n);
   assert.equal(c.payTo, "0x00000000000000000000000000000000000000AA");
 });
 

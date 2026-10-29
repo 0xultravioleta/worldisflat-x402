@@ -128,7 +128,7 @@ try {
   const sendRace = () => fetch(`${base}/api/ask`, { method: "POST", headers: { "content-type": "application/json", "X-PAYMENT": race.paymentHeader }, body: JSON.stringify({ question: "help" }) });
   const statuses = (await Promise.all([sendRace(), sendRace(), sendRace()])).map((r) => r.status);
   const charged = raceBefore - (await usdg(payer.address));
-  check("concurrent replay served once, charged once", statuses.filter((s) => s === 200).length <= 1 && charged === 100_000n,
+  check("concurrent replay served once, charged once", statuses.filter((s) => s === 200).length === 1 && charged === 100_000n,
     `statuses ${statuses.join(",")}, charged ${formatUnits(charged, USDG_DECIMALS)} USDG`);
 
   if (hasWif) {

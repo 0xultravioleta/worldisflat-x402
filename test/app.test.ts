@@ -331,7 +331,7 @@ test("without WORKER_TOKEN, hiring is off before any 402 and the board is closed
 test("a call that fails after the settlement still answers with the receipt", async () => {
   class BrokenStore extends Store {
     addLedger(): never {
-      throw new Error("disk full at https://rpc.example/v2/KEY123");
+      throw new Error("EISDIR: rename '/var/folders/xy/flatfee/state.json.123.tmp' at https://rpc.example/v2/KEY123");
     }
   }
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
@@ -343,7 +343,7 @@ test("a call that fails after the settlement still answers with the receipt", as
   const body = (await r.json()) as any;
   assert.equal(body.paid, true);
   assert.equal(body.receipt.settleTx, "0x" + "ab".repeat(32));
-  assert.doesNotMatch(JSON.stringify(body), /KEY123|rpc\.example/);
+  assert.doesNotMatch(JSON.stringify(body), /KEY123|rpc\.example|EISDIR|var\/folders|state\.json/);
 });
 
 test("safeMessage drops URLs, so an RPC key never reaches the ledger or a response", () => {
@@ -353,5 +353,47 @@ test("safeMessage drops URLs, so an RPC key never reaches the ledger or a respon
   assert.equal(safeMessage(ethersLike), "could not coalesce error");
   assert.equal(safeMessage(new Error("fetch failed for https://rpc.example/v2/KEY123 and wss://x.y/KEY")), "fetch failed for [url] and [url]");
   assert.equal(safeMessage("plain"), "plain");
+  // the configured RPC URL goes in every form it can take inside a message
+  const rpc = "https://rpc.example/v2/KEY123";
+  for (const m of [`posted to ${rpc}`, `{"url":"https:\\/\\/rpc.example\\/v2\\/KEY123"}`, "host rpc.example/v2/KEY123 refused"]) {
+    assert.doesNotMatch(safeMessage(new Error(m), [rpc]), /KEY123/, m);
+  }
   assert.ok(safeMessage(new Error("x".repeat(500))).length <= 200);
+});
+
+test("the daily $WIF budget caps cashback and rewards, and a failed send gives its share back", async () => {
+  // 25 $WIF a day with 10 per call: two cashbacks fit, the third does not
+  const at = startApp({ WIF_DAILY_BUDGET: "25" });
+  const pay = async () => {
+    const a = await terms("ask", { question: "help" }, {}, at);
+    return post("/api/ask", { question: "help" }, { "X-PAYMENT": await signed(stranger, a) }, at);
+  };
+  sendFails = true;
+  assert.equal((await pay()).status, 200); // failed send: released
+  sendFails = false;
+  assert.equal((await pay()).status, 200);
+  assert.equal((await pay()).status, 200);
+  const third = await pay();
+  assert.equal(third.status, 200, "the paid call is still served");
+  assert.equal(((await third.json()) as any).receipt.cashback.tx, null);
+  assert.equal(sent.length, 2);
+  const ledger = (await (await fetch(`${at}/api/ledger`)).json()) as any[];
+  assert.match(ledger[0].cashbackError, /WIF_DAILY_BUDGET/);
+});
+
+test("errors that mention the configured RPC (even without a scheme) are redacted in the ledger", async () => {
+  const at = startApp({ RPC_URL: "https://rpc.example/v2/KEY123" });
+  const original = chain.sendWif;
+  chain.sendWif = async () => {
+    throw new Error("request to rpc.example/v2/KEY123 failed, reason: socket hang up");
+  };
+  try {
+    const a = await terms("ask", { question: "help" }, {}, at);
+    assert.equal((await post("/api/ask", { question: "help" }, { "X-PAYMENT": await signed(stranger, a) }, at)).status, 200);
+    const ledger = (await (await fetch(`${at}/api/ledger`)).json()) as any[];
+    assert.match(ledger[0].cashbackError, /\[rpc\]/);
+    assert.doesNotMatch(JSON.stringify(ledger), /KEY123/);
+  } finally {
+    chain.sendWif = original;
+  }
 });

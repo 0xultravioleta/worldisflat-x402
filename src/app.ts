@@ -61,10 +61,19 @@ export function signedPayment(value: string | null): SignedPayment | null {
   return { payer: getAddress(from.toLowerCase()), value: amount, network: p.network };
 }
 
-/** an error's message without URLs: ethers puts the RPC URL (and any API key in it) into `info.requestUrl` */
-export function safeMessage(e: unknown): string {
+/**
+ * An error's message without URLs: ethers puts the RPC URL (and any API key in it) into `info.requestUrl`. `secrets`
+ * (the configured RPC URL) are removed too, plain and JSON-escaped, wherever they appear.
+ */
+export function safeMessage(e: unknown, secrets: (string | null | undefined)[] = []): string {
   const err = e as { shortMessage?: string; message?: string } | null;
-  const m = err?.shortMessage ?? err?.message ?? String(e);
+  let m = err?.shortMessage ?? err?.message ?? String(e);
+  for (const secret of secrets) {
+    if (!secret) continue;
+    for (const form of [secret, secret.replaceAll("/", "\\/"), secret.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")]) {
+      if (form) m = m.split(form).join("[rpc]");
+    }
+  }
   return m.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]").slice(0, 200);
 }
 
@@ -77,6 +86,34 @@ function text(body: unknown, key: string): string | null {
 
 export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = console.log }: AppDeps) {
   const app = new Hono();
+  const redact = (e: unknown) => safeMessage(e, [cfg.rpcUrl]);
+
+  // $WIF the server may send per UTC day (cashback + worker rewards), reserved before each send and released if it
+  // fails: whatever $WIF is worth tomorrow, a loop of paid calls cannot drain the merchant faster than this
+  let budgetDay = "";
+  let spentToday = 0n;
+  const reserveWif = (amount: bigint): boolean => {
+    const day = new Date().toISOString().slice(0, 10);
+    if (day !== budgetDay) {
+      budgetDay = day;
+      spentToday = 0n;
+    }
+    if (spentToday + amount > cfg.wif.dailyBudget) return false;
+    spentToday += amount;
+    return true;
+  };
+  const releaseWif = (amount: bigint) => {
+    spentToday = spentToday >= amount ? spentToday - amount : 0n;
+  };
+  const sendWifBudgeted = async (to: string, amount: bigint) => {
+    if (!reserveWif(amount)) throw new Error("daily $WIF budget used up (WIF_DAILY_BUDGET)");
+    try {
+      return await chain.sendWif(to, amount);
+    } catch (e) {
+      releaseWif(amount);
+      throw e;
+    }
+  };
   const price = (route: Route, tier: Tier) =>
     route === "ask" ? (tier === "holder" ? cfg.prices.askHolder : cfg.prices.ask) : tier === "holder" ? cfg.prices.hireHolder : cfg.prices.hire;
 
@@ -131,16 +168,15 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
   /** $WIF back to whoever just paid; never fails the paid call */
   async function cashback(entryId: string, payer: string): Promise<string | null> {
     if (cfg.wif.cashback <= 0n) return null;
-    const send = chain
-      .sendWif(payer, cfg.wif.cashback)
+    const send = sendWifBudgeted(payer, cfg.wif.cashback)
       .then((t) => {
         store.updateLedger(entryId, { cashbackTx: t.tx });
         log(`cashback ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF -> ${payer}: ${t.tx}`);
         return t.tx;
       })
       .catch((e: unknown) => {
-        store.updateLedger(entryId, { cashbackError: safeMessage(e) });
-        log(`cashback to ${payer} failed: ${safeMessage(e)}`);
+        store.updateLedger(entryId, { cashbackError: redact(e) });
+        log(`cashback to ${payer} failed: ${redact(e)}`);
         return null;
       });
     const timeout = new Promise<"pending">((r) => setTimeout(() => r("pending"), cashbackWaitMs).unref?.());
@@ -185,8 +221,9 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
           ctx.entryId = store.addLedger({ kind: route, network: cfg.chain.caip2, payer: ctx.payer, tier, price: ctx.price.toString(), settleTx: ctx.settleTx, cashbackTx: null }).id;
           response = await handle(c, input, ctx);
         } catch (e) {
-          log(`paid ${route} by ${ctx.payer} (${ctx.settleTx}) failed after settlement: ${safeMessage(e)}`);
-          response = c.json({ error: `paid, but the call failed: ${safeMessage(e)}`, paid: true, receipt: receipt(ctx, null) }, 500);
+          // the detail (paths, ids) stays in the server log; the buyer gets a fixed message and the proof of payment
+          log(`paid ${route} by ${ctx.payer} (${ctx.settleTx}) failed after settlement: ${redact(e)}`);
+          response = c.json({ error: "paid, but the call failed on our side; keep this receipt", paid: true, receipt: receipt(ctx, null) }, 500);
         }
       });
       return response ?? (result as Response);
@@ -264,7 +301,7 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
           reply = await answer(question, cfg, chain);
         } catch (e) {
           // the payment already settled: answer with what went wrong instead of a bare 500
-          reply = { skill: "help", facts: {}, answer: `The agent could not read the chain just now (${safeMessage(e)}).` };
+          reply = { skill: "help", facts: {}, answer: `The agent could not read the chain just now (${redact(e)}).` };
         }
         const cb = await cashback(ctx.entryId, ctx.payer);
         return c.json({ ...reply, receipt: receipt(ctx, cb) });
@@ -339,10 +376,10 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     store.updateTask(t.id, { status: "done", answer: result, doneAt: new Date().toISOString() });
     if (cfg.wif.workerReward > 0n) {
       try {
-        const r = await chain.sendWif(t.worker, cfg.wif.workerReward);
+        const r = await sendWifBudgeted(t.worker, cfg.wif.workerReward);
         store.updateTask(t.id, { rewardTx: r.tx });
       } catch (e) {
-        store.updateTask(t.id, { rewardError: safeMessage(e) });
+        store.updateTask(t.id, { rewardError: redact(e) });
       }
     }
     return c.json(store.task(t.id));

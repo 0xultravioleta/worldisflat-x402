@@ -60,6 +60,8 @@ export interface Config {
     cashback: bigint;
     /** $WIF (atomic) sent to the human who completes a hire task; 0 turns it off */
     workerReward: bigint;
+    /** $WIF (atomic) the server may send per UTC day, cashback and rewards together */
+    dailyBudget: bigint;
   };
   /** signs the $WIF transfers; only needed when cashback or workerReward is on */
   merchantKey: string | null;
@@ -136,6 +138,7 @@ export function loadConfig(env: Env = process.env): Config {
     holderMin: amount(env, "WIF_HOLDER_MIN", "100", WIF_DECIMALS),
     cashback: amount(env, "WIF_CASHBACK", "0", WIF_DECIMALS),
     workerReward: amount(env, "WIF_WORKER_REWARD", "0", WIF_DECIMALS),
+    dailyBudget: amount(env, "WIF_DAILY_BUDGET", "500", WIF_DECIMALS),
   };
   // 0 would make every payer a holder
   if (wif.holderMin <= 0n) throw new ConfigError("WIF_HOLDER_MIN must be above zero");

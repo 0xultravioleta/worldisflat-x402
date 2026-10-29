@@ -1,0 +1,8 @@
+.env
+.env.*
+node_modules
+data
+.git
+deploy/aws/*.tfvars
+deploy/aws/.terraform
+deploy/aws/terraform.tfstate*

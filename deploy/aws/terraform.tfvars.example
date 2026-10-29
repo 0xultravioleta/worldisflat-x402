@@ -1,0 +1,9 @@
+# copy to terraform.tfvars (gitignored) and fill in; never commit it
+image                = ":flatfee.web.1"
+network              = "robinhood"
+pay_to               = "0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6"
+public_url           = ""
+wif_cashback         = "10"
+wif_worker_reward    = "50"
+merchant_private_key = ""
+worker_token         = ""

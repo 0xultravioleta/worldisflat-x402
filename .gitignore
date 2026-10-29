@@ -9,3 +9,10 @@ coverage/
 data/
 *.log
 .DS_Store
+
+# terraform
+deploy/aws/.terraform/
+deploy/aws/.terraform.lock.hcl
+deploy/aws/terraform.tfstate*
+deploy/aws/*.tfvars
+!deploy/aws/terraform.tfvars.example

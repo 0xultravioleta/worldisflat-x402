@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flat Fee</title>
+  <meta name="description" content="Ask an agent or hire a human for a flat USDG fee per call, paid over x402 on Robinhood Chain, with $WIF cashback." />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="wrap hero">
+    <p class="kicker">x402 · USDG · $WIF · Robinhood Chain</p>
+    <h1>Flat Fee</h1>
+    <p class="lead">Ask an agent or hire a human. Every call costs a flat fee in USDG, paid with one signature over x402 and
+      settled on Robinhood Chain by an open-source facilitator. Every paid call sends <b>$WIF</b> back, and $WIF holders pay half.</p>
+    <dl class="facts" id="facts"><div><dt>network</dt><dd>loading…</dd></div></dl>
+  </header>
+
+  <main class="wrap">
+    <section class="card" id="ask">
+      <h2>1 · Ask the agent</h2>
+      <p class="muted">Live answers about Robinhood Chain: an address's ETH / USDG / $WIF, the latest block and gas, $WIF itself,
+        or which x402 schemes the facilitator settles here.</p>
+      <textarea id="question" rows="2" maxlength="500">What is the latest block and gas on the chain?</textarea>
+      <div class="row">
+        <button id="ask-quote" class="ghost">See the 402</button>
+        <button id="ask-pay">Pay <span data-price="ask">…</span> USDG with wallet</button>
+      </div>
+      <pre id="ask-out" class="out" hidden></pre>
+    </section>
+
+    <section class="card" id="hire">
+      <h2>2 · Hire a human</h2>
+      <p class="muted">Pay once, the task lands on the board below, a person claims it and answers. They earn $WIF for it.</p>
+      <textarea id="request" rows="2" maxlength="500">Check that the cafe on 5th street is open and send a photo of the menu.</textarea>
+      <div class="row">
+        <button id="hire-pay">Pay <span data-price="hire">…</span> USDG with wallet</button>
+      </div>
+      <pre id="hire-out" class="out" hidden></pre>
+    </section>
+
+    <section class="card">
+      <h2>3 · Or pay from a terminal, like an agent would</h2>
+<pre class="code">curl -i -X POST <span data-origin></span>/api/ask -H 'content-type: application/json' \
+  -d '{"question":"latest block?"}'            # 402 Payment Required + the USDG terms
+
+npm run buy -- "What is 0x5173b8ea6923c2d40267890d45c46a3480954773?"   # signs, pays, prints the answer and the tx</pre>
+    </section>
+
+    <section class="card">
+      <h2>Paid calls</h2>
+      <p class="muted">Every row is a USDG settlement on Robinhood Chain, and the $WIF that went back.</p>
+      <div class="table-wrap"><table id="ledger"><thead><tr><th>when</th><th>call</th><th>payer</th><th>paid</th><th>settlement</th><th>$WIF back</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Task board</h2>
+      <p class="muted">Humans claim paid tasks and answer them. Completing one sends the worker $WIF.</p>
+      <div class="row worker">
+        <input id="worker" placeholder="your wallet 0x… (to claim)" />
+        <input id="worker-token" placeholder="worker token" type="password" />
+      </div>
+      <ul id="tasks" class="tasks"></ul>
+    </section>
+
+    <section class="card">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><b>402.</b> The endpoint answers <code>402 Payment Required</code> with a price in USDG on Robinhood Chain (<code data-caip2>eip155:4663</code>).</li>
+        <li><b>Sign.</b> The wallet or agent signs an EIP-3009 <code>transferWithAuthorization</code> for exactly that amount. No gas, no approve.</li>
+        <li><b>Settle.</b> Ultravioleta's x402 facilitator verifies it and settles USDG on chain, paying the gas.</li>
+        <li><b>Serve.</b> The agent answers, or the task goes on the board for a human.</li>
+        <li><b>$WIF back.</b> The merchant wallet sends $WIF to the payer. Hold enough $WIF and the next call costs half.</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Built by Ultravioleta DAO for the world is flat hackathon. Open source, MIT. Flat Fee is not affiliated with, endorsed by,
+      or officially connected with Robinhood Markets, Inc.</p>
+  </footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

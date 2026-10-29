@@ -1,0 +1,11 @@
+# secrets: wallet keys live only here
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+coverage/
+data/
+*.log
+.DS_Store

@@ -1,6 +1,6 @@
 // The paid-call ledger and the hire-a-human task board, kept in one JSON file under DATA_DIR.
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export interface LedgerEntry {
@@ -50,12 +50,16 @@ export class Store {
   }
 
   private static read(file: string): State {
+    if (!existsSync(file)) return { ledger: [], tasks: [] };
+    // a file that is there but unreadable stops the server: starting empty would overwrite the history on the next save
+    let s: Partial<State>;
     try {
-      const s = JSON.parse(readFileSync(file, "utf8")) as Partial<State>;
-      return { ledger: Array.isArray(s.ledger) ? s.ledger : [], tasks: Array.isArray(s.tasks) ? s.tasks : [] };
-    } catch {
-      return { ledger: [], tasks: [] };
+      s = JSON.parse(readFileSync(file, "utf8")) as Partial<State>;
+    } catch (e) {
+      throw new Error(`${file} is not valid JSON (${(e as Error).message}); move it away or run npm run reset`);
     }
+    if (!Array.isArray(s?.ledger) || !Array.isArray(s?.tasks)) throw new Error(`${file} has no ledger/tasks arrays; move it away or run npm run reset`);
+    return { ledger: s.ledger, tasks: s.tasks };
   }
 
   private save() {
@@ -117,5 +121,13 @@ export class Store {
   reset() {
     this.state = { ledger: [], tasks: [] };
     this.save();
+  }
+
+  /** empties DATA_DIR/state.json without reading it, so a corrupt file can be cleared too */
+  static resetDir(dataDir: string): string {
+    mkdirSync(dataDir, { recursive: true });
+    const file = path.join(dataDir, "state.json");
+    writeFileSync(file, JSON.stringify({ ledger: [], tasks: [] }, null, 2));
+    return file;
   }
 }

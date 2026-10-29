@@ -3,7 +3,8 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Every paid call sends **$WIF** back, and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: `[DEMO_URL]`
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: `[DEMO_URL]` ·
+Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem
 
@@ -71,12 +72,13 @@ You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fo
    Paste the worker token `demo`, enter any address, click **claim**, type an answer and click **complete**: the task
    turns `done` and the worker receives 50 $WIF. (The tx links point at the real explorer and do not resolve there:
    those transactions only exist on the fork.)
-3. **`npm run e2e:fork`**: the whole flow as assertions, 21 checks on a fork of mainnet. You see `PASS` for: the 402
+3. **`npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
    terms, unpaid rejection of bad input, a paid question through the SDK, USDG moving payer → merchant, the settlement
-   mined, the $WIF cashback, the landing page's own payment code, a replayed payment refused, the holder price, a
+   mined, the $WIF cashback, the landing page's own payment code, a replayed payment refused, three concurrent copies of one payment charged
+   once, the holder price, a
    non-holder refused at the holder price, hire → claim → complete with the worker's $WIF, and the facilitator double
    refusing a wrong amount, recipient, asset, network, an expired authorization and a bad signature.
-   `npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (17 checks, no $WIF there).
+   `npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (18 checks, no $WIF there).
 4. **`npm run verify:testnet`**: against the **real** facilitator on Robinhood Chain Testnet, read-only. You see that our
    EIP-712 domain equals USDG's on-chain `DOMAIN_SEPARATOR()` on both chains, that the facilitator takes a signed
    payment from an unfunded wallet all the way to the balance check (`insufficient_funds`), and refuses an expired one
@@ -86,7 +88,8 @@ You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fo
 On a real network: `cp .env.example .env`, set `PAY_TO`, `npm start`, then
 `curl -i -X POST localhost:3000/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'` → you see
 `402 Payment Required` and the USDG terms. With a funded `PAYER_PRIVATE_KEY`, `npm run buy -- "your question"` pays and
-prints the answer with the settlement link.
+prints the answer with the settlement link (on mainnet: `CONFIRM_MAINNET_SPEND=0.10`, with `PAY_TO` set to the expected
+recipient).
 
 ## Real transactions on Robinhood Chain mainnet
 
@@ -125,15 +128,21 @@ runs (`src/double/`, `scripts/`), the tests (`test/`), and the deploy recipe (`D
 ## Safety
 
 - Keys live only in `.env` (gitignored). Nothing prints them; `npm run balances` prints addresses only.
-- Mainnet spends need the exact amount on the command line (`CONFIRM_MAINNET_SPEND`, `CONFIRM_MAINNET_WIF`), and the
-  buyer never signs more than that, for any asset other than USDG, or on another network.
+- Mainnet spends need the exact amount on the command line (`CONFIRM_MAINNET_SPEND`, `CONFIRM_MAINNET_WIF`) and the
+  expected recipient (`PAY_TO` or `CONFIRM_MAINNET_PAY_TO`). The SDK re-reads the 402 before it signs, so the buyer pins
+  its choice to the offer it checked: same network, USDG, same recipient, same amount, or nothing is signed
+  (`test/buyer.test.ts`).
+- The price is decided from the same payment header the SDK pays from (`PAYMENT-SIGNATURE`, else `X-PAYMENT`); a request
+  carrying two different payment headers is refused.
 - The holder price comes from the address the signature commits to, never from a header: a non-holder who signs the
   holder price is refused (tested on the fork and in `test/app.test.ts`).
 - A replayed payment is not served twice. Bad input is refused before the 402, so nobody pays for a rejected request.
-  A failed cashback never fails a paid call; the ledger records why.
+  A failed cashback never fails a paid call; the ledger records why. A call that fails after its settlement still answers
+  with the receipt. Error text is stripped of URLs before it is stored or returned (an RPC URL can carry an API key).
 - The merchant wallet is the cashback budget: give it only the $WIF you are willing to give away.
-- Worker endpoints need `WORKER_TOKEN` whenever the worker reward is on, and only the worker who claimed a task can
-  complete it.
+- Hiring and the task board are off without `WORKER_TOKEN` (compared in constant time). Only the worker who claimed a
+  task can complete it, and the payer of a task cannot claim it. Workers holding the token are trusted operators.
+- A corrupt `state.json` stops the server instead of being overwritten; `npm run reset` clears it.
 
 ## Configuration
 

@@ -114,7 +114,7 @@ Agents can answer questions and people can run errands, but there is no simple w
 An HTTP endpoint answers 402 Payment Required with a price in USDG on Robinhood Chain. A wallet or an agent signs one EIP-3009 authorization, Ultravioleta's open-source x402 facilitator settles it on chain, and the endpoint answers the question or puts the task on a board for a human. Every paid call sends $WIF back; $WIF holders pay half; humans who complete tasks earn $WIF.
 
 ## How we built it
-A small TypeScript server (Hono) using the public uvd-x402-sdk on both sides, a landing page with a browser-wallet payment flow, and the Ultravioleta x402 facilitator, which already settled USDG on Robinhood Chain mainnet and testnet. $WIF is read and transferred directly on chain. A local fork of Robinhood Chain with the real USDG and $WIF contracts runs the whole flow as 21 automated checks.
+A small TypeScript server (Hono) using the public uvd-x402-sdk on both sides, a landing page with a browser-wallet payment flow, and the Ultravioleta x402 facilitator, which already settled USDG on Robinhood Chain mainnet and testnet. $WIF is read and transferred directly on chain. A local fork of Robinhood Chain with the real USDG and $WIF contracts runs the whole flow as 22 automated checks.
 
 ## Challenges we ran into
 USDG's on-chain version() reverts, so the EIP-712 domain has to travel in the 402 itself; and pricing the $WIF cashback so it rewards users without being farmable (10 $WIF is about 12% of a call).

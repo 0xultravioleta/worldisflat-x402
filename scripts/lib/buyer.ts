@@ -11,6 +11,8 @@ export interface BuyOptions {
   maxAmount: string;
   /** on mainnet the exact amount the owner approved; the 402 must ask for exactly this or nothing is signed */
   confirmMainnet?: string | null;
+  /** the wallet the payment must go to; required on mainnet */
+  expectPayTo?: string | null;
   payer?: string;
   rpcUrl?: string;
 }
@@ -49,6 +51,10 @@ export async function buy(o: BuyOptions): Promise<Bought> {
   if (offer.network !== chain.caip2 || offer.asset.toLowerCase() !== chain.usdg.toLowerCase()) {
     throw new Error(`the 402 asks for ${offer.asset} on ${offer.network}, not USDG on ${chain.caip2}: refusing to sign`);
   }
+  if (o.expectPayTo && offer.payTo.toLowerCase() !== o.expectPayTo.toLowerCase()) {
+    throw new Error(`the 402 pays ${offer.payTo}, not the expected ${o.expectPayTo}: refusing to sign`);
+  }
+  if (o.network === "robinhood" && !o.expectPayTo) throw new Error("mainnet: set the expected pay-to wallet (PAY_TO or CONFIRM_MAINNET_PAY_TO)");
   let maxAmount = o.maxAmount;
   if (o.network === "robinhood") {
     maxAmount = price; // the SDK re-reads the 402 before signing: never let it sign more than what was approved
@@ -59,9 +65,14 @@ export async function buy(o: BuyOptions): Promise<Bought> {
   }
   const client = new X402Client({ defaultChain: o.network, ...(o.rpcUrl ? { rpcOverrides: { [o.network]: o.rpcUrl } } : {}) });
   await client.connectWithPrivateKey(o.key, o.network);
+  // the SDK fetches the 402 again before it signs: sign only an offer identical to the one checked above, on this
+  // network, in USDG, to the same wallet, for the same amount; anything else throws NO_ACCEPTABLE_PAYMENT unsigned
+  const same = (x: string | undefined, y: string) => typeof x === "string" && x.toLowerCase() === y.toLowerCase();
   const r = await client.fetch(o.url, {
     method: "POST",
     maxAmount,
+    select: (offers) =>
+      offers.find((x) => (x.network === chain.caip2 || x.network === chain.name) && same(x.asset, chain.usdg) && same(x.payTo, offer.payTo) && x.amount === offer.amount),
     init: { headers: { "content-type": "application/json", ...(o.payer ? { "x-payer": o.payer } : {}) }, body: JSON.stringify(o.body) },
   });
   const text = await r.text();

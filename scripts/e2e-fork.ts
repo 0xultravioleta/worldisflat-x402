@@ -122,6 +122,15 @@ try {
   const twice = await fetch(`${base}/api/ask`, { method: "POST", headers: { "content-type": "application/json", "X-PAYMENT": p.paymentHeader }, body: JSON.stringify({ question: "help" }) });
   check("same X-PAYMENT served once", once.status === 200 && twice.status !== 200, `first ${once.status}, replay ${twice.status}`);
 
+  // 4b. the same payment sent three times at once: served at most once, charged exactly once
+  const race = await client.createPayment({ recipient: merchant.address, amount: "0.10", tokenType: "usdg" } as never);
+  const raceBefore = await usdg(payer.address);
+  const sendRace = () => fetch(`${base}/api/ask`, { method: "POST", headers: { "content-type": "application/json", "X-PAYMENT": race.paymentHeader }, body: JSON.stringify({ question: "help" }) });
+  const statuses = (await Promise.all([sendRace(), sendRace(), sendRace()])).map((r) => r.status);
+  const charged = raceBefore - (await usdg(payer.address));
+  check("concurrent replay served once, charged once", statuses.filter((s) => s === 200).length <= 1 && charged === 100_000n,
+    `statuses ${statuses.join(",")}, charged ${formatUnits(charged, USDG_DECIMALS)} USDG`);
+
   if (hasWif) {
     // 5. a $WIF holder pays the holder price (0.05): give the payer 100 $WIF in total
     const have = await wif(payer.address);

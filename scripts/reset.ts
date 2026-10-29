@@ -4,5 +4,4 @@ import { Store } from "../src/store.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const dir = process.env.DATA_DIR?.trim() || "data";
-new Store(dir).reset();
-console.log(`cleared ${dir}/state.json`);
+console.log(`cleared ${Store.resetDir(dir)}`);

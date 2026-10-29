@@ -29,6 +29,7 @@ try {
     payer,
     maxAmount: process.env.MAX_USDG?.trim() || "1.00",
     confirmMainnet: process.env.CONFIRM_MAINNET_SPEND ?? null,
+    expectPayTo: process.env.CONFIRM_MAINNET_PAY_TO?.trim() || process.env.PAY_TO?.trim() || null,
   });
   console.log(`paid ${r.price} USDG -> HTTP ${r.status}`);
   console.log(JSON.stringify(r.body, null, 2));

@@ -1,8 +1,9 @@
 // The HTTP app: the landing page, two x402-paid routes priced in USDG (ask an agent, hire a human), and the task board.
+import { timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { isAddress, getAddress } from "ethers";
-import { createHonoMiddleware, extractPaymentFromHeaders } from "uvd-x402-sdk/backend";
+import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
 import type { Chain, Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
@@ -27,21 +28,45 @@ interface X402State {
   payment: unknown;
 }
 
-/** the payer and the amount an X-PAYMENT (or PAYMENT-SIGNATURE) header commits to, or null */
-export function signedPayment(headers: Record<string, string | undefined>): { payer: string; value: bigint | null } | null {
-  const p = extractPaymentFromHeaders(headers) as { payload?: { authorization?: { from?: string; value?: string } } } | null;
-  const from = p?.payload?.authorization?.from;
-  if (typeof from !== "string" || !isAddress(from)) return null;
-  let value: bigint | null = null;
-  try {
-    value = BigInt(p?.payload?.authorization?.value ?? "");
-  } catch {
-    value = null;
-  }
-  return { payer: getAddress(from.toLowerCase()), value };
+/**
+ * The one payment header the SDK middleware pays from: PAYMENT-SIGNATURE, else X-PAYMENT, exactly as its own
+ * `req.header("PAYMENT-SIGNATURE") || req.header("X-PAYMENT")`. Reading it any other way (the SDK's exported
+ * extractPaymentFromHeaders prefers X-PAYMENT) lets a decoy in one header pick the price while the other one pays.
+ * Two different payment headers in one request are refused outright.
+ */
+export function paymentHeaderOf(get: (name: string) => string | undefined): { value: string | null; conflict: boolean } {
+  const ps = get("payment-signature") || null;
+  const xp = get("x-payment") || null;
+  return { value: ps || xp, conflict: !!ps && !!xp && ps !== xp };
 }
 
-export const payerFromHeaders = (headers: Record<string, string | undefined>) => signedPayment(headers)?.payer ?? null;
+export interface SignedPayment {
+  payer: string;
+  value: bigint | null;
+  network: string;
+}
+
+/** what a payment header commits to: the payer, the amount and the network; null when the SDK could not route it */
+export function signedPayment(value: string | null): SignedPayment | null {
+  if (!value) return null;
+  const p = parsePaymentHeader(value) as { network?: unknown; payload?: { authorization?: { from?: string; value?: string } } } | null;
+  const from = p?.payload?.authorization?.from;
+  if (!p || typeof p.network !== "string" || typeof from !== "string" || !isAddress(from)) return null;
+  let amount: bigint | null = null;
+  try {
+    amount = BigInt(p.payload?.authorization?.value ?? "");
+  } catch {
+    amount = null;
+  }
+  return { payer: getAddress(from.toLowerCase()), value: amount, network: p.network };
+}
+
+/** an error's message without URLs: ethers puts the RPC URL (and any API key in it) into `info.requestUrl` */
+export function safeMessage(e: unknown): string {
+  const err = e as { shortMessage?: string; message?: string } | null;
+  const m = err?.shortMessage ?? err?.message ?? String(e);
+  return m.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]").slice(0, 200);
+}
 
 function text(body: unknown, key: string): string | null {
   const v = (body as Record<string, unknown> | null)?.[key];
@@ -87,19 +112,12 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     }
   }
 
-  const headersOf = (c: Context) => {
-    const h: Record<string, string | undefined> = {};
-    c.req.raw.headers.forEach((v, k) => (h[k] = v));
-    return h;
-  };
-
   /**
    * Which price this request is held to. With a payment, the tier comes from the payer the signature commits to, so
    * only a real $WIF holder gets the holder price; a holder who signed the standard price (an unhinted quote) is
    * served at the standard price rather than refused. Without one, a `?payer=` / `X-Payer` hint only shapes the 402.
    */
-  async function tierFor(route: Route, c: Context): Promise<Tier> {
-    const signed = signedPayment(headersOf(c));
+  async function tierFor(route: Route, c: Context, signed: SignedPayment | null): Promise<Tier> {
     if (signed) {
       const best = await chain.tierOf(signed.payer);
       if (best === "holder" && signed.value === price(route, "standard")) return "standard";
@@ -120,9 +138,9 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
         log(`cashback ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF -> ${payer}: ${t.tx}`);
         return t.tx;
       })
-      .catch((e: Error) => {
-        store.updateLedger(entryId, { cashbackError: e.message.slice(0, 200) });
-        log(`cashback to ${payer} failed: ${e.message}`);
+      .catch((e: unknown) => {
+        store.updateLedger(entryId, { cashbackError: safeMessage(e) });
+        log(`cashback to ${payer} failed: ${safeMessage(e)}`);
         return null;
       });
     const timeout = new Promise<"pending">((r) => setTimeout(() => r("pending"), cashbackWaitMs).unref?.());
@@ -141,21 +159,35 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
       // refuse bad input before the 402, so nobody pays for a request we would reject
       const input = validate(body);
       if (!input) return c.json({ error: `send JSON with a non-empty "${route === "ask" ? "question" : "request"}" of at most ${MAX_TEXT} characters` }, 400);
+      if (route === "hire" && !cfg.workerToken) return c.json({ error: "hiring is off on this server: no WORKER_TOKEN, so nobody could take the task" }, 503);
 
-      // a payment header the SDK cannot route (no `network`) makes its middleware throw a 500: refuse it as bad input
-      const raw = extractPaymentFromHeaders(headersOf(c)) as { network?: unknown } | null;
-      const sent = c.req.header("x-payment") ?? c.req.header("payment-signature");
-      if (sent && (!raw || typeof raw.network !== "string")) return c.json({ error: "malformed X-PAYMENT header" }, 400);
+      const header = paymentHeaderOf((n) => c.req.header(n));
+      if (header.conflict) return c.json({ error: "send one payment header: PAYMENT-SIGNATURE and X-PAYMENT differ" }, 400);
+      const signed = signedPayment(header.value);
+      // a header the SDK cannot route (no `network`) makes its middleware throw a 500: refuse it as bad input
+      if (header.value && !signed) return c.json({ error: "malformed payment header" }, 400);
 
-      const tier = await tierFor(route, c);
+      const tier = await tierFor(route, c, signed);
       const paywall = paywalls.get(`${route}:${tier}`)!;
       let response: Response | undefined;
       const result = await paywall(c as never, async () => {
+        // the SDK settles before this runs: from here on the buyer has paid, so every exit carries the receipt
         const x402 = c.get("x402" as never) as X402State;
         const settled = await x402.settle();
-        const settleTx = settled.transactionHash ?? settled.transaction ?? null;
-        const payer = getAddress(String(settled.payer ?? x402.verifyResult.payer ?? payerFromHeaders(headersOf(c))).toLowerCase());
-        response = await handle(c, input, { tier, payer, settleTx, price: price(route, tier) });
+        const ctx: PaidCtx = {
+          tier,
+          payer: signed!.payer,
+          settleTx: settled.transactionHash ?? settled.transaction ?? null,
+          price: price(route, tier),
+          entryId: "",
+        };
+        try {
+          ctx.entryId = store.addLedger({ kind: route, network: cfg.chain.caip2, payer: ctx.payer, tier, price: ctx.price.toString(), settleTx: ctx.settleTx, cashbackTx: null }).id;
+          response = await handle(c, input, ctx);
+        } catch (e) {
+          log(`paid ${route} by ${ctx.payer} (${ctx.settleTx}) failed after settlement: ${safeMessage(e)}`);
+          response = c.json({ error: `paid, but the call failed: ${safeMessage(e)}`, paid: true, receipt: receipt(ctx, null) }, 500);
+        }
       });
       return response ?? (result as Response);
     };
@@ -166,6 +198,7 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     payer: string;
     settleTx: string | null;
     price: bigint;
+    entryId: string;
   }
 
   const receipt = (ctx: PaidCtx, cashbackTx: string | null) => ({
@@ -225,15 +258,15 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
       "ask",
       (b) => text(b, "question"),
       async (c, question, ctx) => {
-        const entry = store.addLedger({ kind: "ask", network: cfg.chain.caip2, payer: ctx.payer, tier: ctx.tier, price: ctx.price.toString(), settleTx: ctx.settleTx, cashbackTx: null, question });
+        store.updateLedger(ctx.entryId, { question });
         let reply;
         try {
           reply = await answer(question, cfg, chain);
         } catch (e) {
           // the payment already settled: answer with what went wrong instead of a bare 500
-          reply = { skill: "help", facts: {}, answer: `The agent could not read the chain just now (${(e as Error).message}).` };
+          reply = { skill: "help", facts: {}, answer: `The agent could not read the chain just now (${safeMessage(e)}).` };
         }
-        const cb = await cashback(entry.id, ctx.payer);
+        const cb = await cashback(ctx.entryId, ctx.payer);
         return c.json({ ...reply, receipt: receipt(ctx, cb) });
       },
     ),
@@ -246,8 +279,8 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
       (b) => text(b, "request"),
       async (c, request, ctx) => {
         const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx });
-        const entry = store.addLedger({ kind: "hire", network: cfg.chain.caip2, payer: ctx.payer, tier: ctx.tier, price: ctx.price.toString(), settleTx: ctx.settleTx, cashbackTx: null, taskId: task.id });
-        const cb = await cashback(entry.id, ctx.payer);
+        store.updateLedger(ctx.entryId, { taskId: task.id });
+        const cb = await cashback(ctx.entryId, ctx.payer);
         return c.json({ task, poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
       },
     ),
@@ -270,7 +303,14 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     return t ? c.json(t) : c.json({ error: "no such task" }, 404);
   });
 
-  const workerAllowed = (c: Context) => !cfg.workerToken || c.req.header("x-worker-token") === cfg.workerToken;
+  // the task board is closed without WORKER_TOKEN; the token is compared in constant time
+  const workerAllowed = (c: Context) => {
+    const got = c.req.header("x-worker-token");
+    if (!cfg.workerToken || !got) return false;
+    const a = Buffer.from(got);
+    const b = Buffer.from(cfg.workerToken);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
 
   app.post("/api/tasks/:id/claim", async (c) => {
     if (!workerAllowed(c)) return c.json({ error: "wrong or missing X-Worker-Token" }, 401);
@@ -280,6 +320,8 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     const t = store.task(c.req.param("id"));
     if (!t) return c.json({ error: "no such task" }, 404);
     if (t.status !== "open") return c.json({ error: `task is ${t.status}` }, 409);
+    // whoever paid for a task cannot also take it and collect the $WIF reward on their own payment
+    if (getAddress(worker.toLowerCase()) === t.payer) return c.json({ error: "the payer of a task cannot claim it" }, 409);
     return c.json(store.updateTask(t.id, { status: "claimed", worker: getAddress(worker.toLowerCase()) }));
   });
 
@@ -300,7 +342,7 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
         const r = await chain.sendWif(t.worker, cfg.wif.workerReward);
         store.updateTask(t.id, { rewardTx: r.tx });
       } catch (e) {
-        store.updateTask(t.id, { rewardError: (e as Error).message.slice(0, 200) });
+        store.updateTask(t.id, { rewardError: safeMessage(e) });
       }
     }
     return c.json(store.task(t.id));

@@ -56,6 +56,7 @@ test("loadConfig refuses unsafe or broken settings", () => {
     [{ PAY_TO, WIF_CASHBACK: "10", MERCHANT_PRIVATE_KEY: "0x" + "11".repeat(32) }, /\$WIF token/],
     [{ PAY_TO, NETWORK: "robinhood", WIF_WORKER_REWARD: "5", MERCHANT_PRIVATE_KEY: "0x" + "11".repeat(32) }, /WORKER_TOKEN/],
     [{ PAY_TO, PORT: "70000" }, /PORT/],
+    [{ PAY_TO, WIF_HOLDER_MIN: "0" }, /WIF_HOLDER_MIN/],
   ];
   for (const [env, msg] of cases) assert.throws(() => loadConfig(env), msg, JSON.stringify(env));
 });

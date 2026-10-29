@@ -68,6 +68,7 @@ try {
     payer,
     maxAmount: formatUnits(price, USDG_DECIMALS),
     confirmMainnet: process.env.CONFIRM_MAINNET_SPEND ?? null,
+    expectPayTo: cfg.payTo,
   });
   console.log(`HTTP ${r.status}: ${r.body.answer ?? JSON.stringify(r.body).slice(0, 300)}`);
   const receipt = r.body.receipt ?? {};

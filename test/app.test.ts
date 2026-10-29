@@ -7,8 +7,8 @@ import path from "node:path";
 import { after, before, beforeEach, test } from "node:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { Wallet, type BaseWallet, type JsonRpcProvider } from "ethers";
-import { createApp } from "../src/app.js";
+import { Wallet, getAddress, verifyTypedData, type BaseWallet, type JsonRpcProvider } from "ethers";
+import { createApp, safeMessage } from "../src/app.js";
 import type { Chain, Tier } from "../src/chain.js";
 import { loadConfig } from "../src/config.js";
 import { Store } from "../src/store.js";
@@ -20,20 +20,54 @@ const stranger = Wallet.createRandom();
 const worker = Wallet.createRandom();
 const payTo = Wallet.createRandom().address;
 
-// fake facilitator: valid unless told otherwise, records what it saw
+// fake facilitator, strict like the real one: the signature must recover to `from` over the USDG domain of the
+// requirement, and the amount, recipient and network must match it. `facValid = false` makes it refuse for funds.
 const facCalls: { path: string; value: string; from: string }[] = [];
 let facValid = true;
 const fac = new Hono();
-const seen = (b: any) => b?.paymentPayload?.payload?.authorization ?? {};
+const TYPES = {
+  TransferWithAuthorization: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "validAfter", type: "uint256" },
+    { name: "validBefore", type: "uint256" },
+    { name: "nonce", type: "bytes32" },
+  ],
+};
+const usedNonces = new Set<string>();
+function strictVerify(b: any): { ok: true; from: string } | { ok: false; reason: string; from?: string } {
+  const pay = b?.paymentPayload?.payload;
+  const a = pay?.authorization;
+  const req = b?.paymentRequirements ?? b?.accepted ?? b?.paymentPayload?.accepted;
+  if (!a || !req) return { ok: false, reason: "invalid_payload" };
+  if (req.network !== "eip155:46630") return { ok: false, reason: "invalid_network", from: a.from };
+  if (a.value !== String(req.amount ?? req.maxAmountRequired)) return { ok: false, reason: "invalid_value", from: a.from };
+  if (getAddress(a.to) !== getAddress(req.payTo)) return { ok: false, reason: "recipient_mismatch", from: a.from };
+  let signer = "";
+  try {
+    signer = verifyTypedData({ name: req.extra.name, version: req.extra.version, chainId: 46630, verifyingContract: req.asset }, TYPES, a, pay.signature);
+  } catch {
+    return { ok: false, reason: "invalid_signature", from: a.from };
+  }
+  if (getAddress(signer) !== getAddress(a.from)) return { ok: false, reason: "invalid_signature", from: a.from };
+  if (usedNonces.has(a.nonce)) return { ok: false, reason: "authorization_already_used", from: a.from };
+  if (!facValid) return { ok: false, reason: "insufficient_funds", from: a.from };
+  return { ok: true, from: a.from };
+}
 fac.post("/verify", async (c) => {
-  const a = seen(await c.req.json());
-  facCalls.push({ path: "verify", value: a.value, from: a.from });
-  return c.json(facValid ? { isValid: true, payer: a.from } : { isValid: false, invalidReason: "insufficient_funds", payer: a.from });
+  const b = await c.req.json();
+  const v = strictVerify(b);
+  facCalls.push({ path: "verify", value: b?.paymentPayload?.payload?.authorization?.value, from: b?.paymentPayload?.payload?.authorization?.from });
+  return c.json(v.ok ? { isValid: true, payer: v.from } : { isValid: false, invalidReason: v.reason, payer: v.from });
 });
 fac.post("/settle", async (c) => {
-  const a = seen(await c.req.json());
-  facCalls.push({ path: "settle", value: a.value, from: a.from });
-  return c.json({ success: true, transaction: "0x" + "ab".repeat(32), network: "eip155:46630", payer: a.from });
+  const b = await c.req.json();
+  const v = strictVerify(b);
+  facCalls.push({ path: "settle", value: b?.paymentPayload?.payload?.authorization?.value, from: b?.paymentPayload?.payload?.authorization?.from });
+  if (!v.ok) return c.json({ success: false, errorReason: v.reason, network: "eip155:46630" });
+  usedNonces.add(b.paymentPayload.payload.authorization.nonce);
+  return c.json({ success: true, transaction: "0x" + "ab".repeat(32), network: "eip155:46630", payer: v.from });
 });
 
 // fake chain: the holder holds $WIF, nobody else; $WIF sends are recorded (or fail on demand)
@@ -51,33 +85,43 @@ const chain: Chain = {
   },
 };
 
-let servers: { close: () => void }[] = [];
+const servers: { close: () => void }[] = [];
+const dirs: string[] = [];
 let base = "";
-let dataDir = "";
+let facUrl = "";
+const merchantKey = Wallet.createRandom().privateKey;
+let nextPort = 30000 + Math.floor(Math.random() * 10000);
 
-before(async () => {
-  const facPort = 30000 + Math.floor(Math.random() * 10000);
-  servers.push(serve({ fetch: fac.fetch, port: facPort }));
-  dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
+function startApp(env: Record<string, string> = {}, store?: Store): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
+  dirs.push(dir);
   const cfg = loadConfig({
     PAY_TO: payTo,
-    FACILITATOR_URL: `http://127.0.0.1:${facPort}`,
-    DATA_DIR: dataDir,
+    FACILITATOR_URL: facUrl,
+    DATA_DIR: dir,
     WIF_ADDRESS: "0x00000000000000000000000000000000000000f1",
     WIF_CASHBACK: "10",
     WIF_WORKER_REWARD: "50",
-    MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
+    MERCHANT_PRIVATE_KEY: merchantKey,
     WORKER_TOKEN: "secret",
+    ...env,
   });
-  const app = createApp({ cfg, chain, store: new Store(dataDir), log: () => {} });
-  const port = facPort + 1;
+  const app = createApp({ cfg, chain, store: store ?? new Store(dir), log: () => {} });
+  const port = nextPort++;
   servers.push(serve({ fetch: app.fetch, port }));
-  base = `http://127.0.0.1:${port}`;
+  return `http://127.0.0.1:${port}`;
+}
+
+before(async () => {
+  const facPort = nextPort++;
+  servers.push(serve({ fetch: fac.fetch, port: facPort }));
+  facUrl = `http://127.0.0.1:${facPort}`;
+  base = startApp();
 });
 
 after(() => {
   for (const s of servers) s.close();
-  rmSync(dataDir, { recursive: true, force: true });
+  for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -87,11 +131,11 @@ beforeEach(() => {
   sendFails = false;
 });
 
-const post = (p: string, body: unknown, headers: Record<string, string> = {}) =>
-  fetch(`${base}${p}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+const post = (p: string, body: unknown, headers: Record<string, string> = {}, at = base) =>
+  fetch(`${at}${p}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 
-async function terms(route: string, body: unknown, headers: Record<string, string> = {}) {
-  const r = await post(`/api/${route}`, body, headers);
+async function terms(route: string, body: unknown, headers: Record<string, string> = {}, at = base) {
+  const r = await post(`/api/${route}`, body, headers, at);
   assert.equal(r.status, 402);
   return ((await r.json()) as { accepts: Record<string, any>[] }).accepts[0];
 }
@@ -203,7 +247,8 @@ test("hire a human: paid task, claim and complete by the same worker, reward in 
   assert.equal((await post(`/api/tasks/${task.id}/claim`, { worker: "0x123" }, wh)).status, 400);
   assert.equal((await post(`/api/tasks/nope/claim`, { worker: worker.address }, wh)).status, 404);
   assert.equal((await post(`/api/tasks/${task.id}/claim`, { worker: worker.address.toLowerCase() }, wh)).status, 200);
-  assert.equal((await post(`/api/tasks/${task.id}/claim`, { worker: stranger.address }, wh)).status, 409);
+  // a third wallet (neither the payer nor the claimer) still cannot take a claimed task
+  assert.equal((await post(`/api/tasks/${task.id}/claim`, { worker: Wallet.createRandom().address }, wh)).status, 409);
 
   sent.length = 0;
   assert.equal((await post(`/api/tasks/${task.id}/complete`, { worker: stranger.address, answer: "done" }, wh)).status, 409);
@@ -223,7 +268,90 @@ test("info and quote describe the prices without secrets", async () => {
   assert.equal(info.wif.cashback, "10");
   assert.equal(info.network.rpcUrl, "https://rpc.testnet.chain.robinhood.com");
   assert.doesNotMatch(JSON.stringify(info), /PRIVATE|secret/i);
+  const everything = JSON.stringify([info, await (await fetch(`${base}/api/ledger`)).json(), await (await fetch(`${base}/api/tasks`)).json()]);
+  assert.ok(!everything.toLowerCase().includes(merchantKey.slice(2).toLowerCase()), "the merchant key leaked");
+  assert.ok(!everything.includes("secret"), "the worker token leaked");
   const q = (await (await fetch(`${base}/api/quote?payer=${holder.address}`)).json()) as any;
   assert.equal(q.tier, "holder");
   assert.equal((await fetch(`${base}/api/quote?payer=0x12`)).status, 400);
+});
+
+test("a decoy X-PAYMENT next to a real PAYMENT-SIGNATURE is refused, whatever the order", async () => {
+  // the attacker's own signature for the holder price, plus a header naming a holder: the SDK pays from
+  // PAYMENT-SIGNATURE, so the price must be decided from that one too, or the two must not be mixed at all
+  const cheap = await terms("ask", { question: "help" }, { "x-payer": holder.address });
+  const real = await signed(stranger, cheap);
+  const decoy = await signed(holder, cheap);
+  for (const h of [{ "PAYMENT-SIGNATURE": real, "X-PAYMENT": decoy }, { "X-PAYMENT": real, "PAYMENT-SIGNATURE": decoy }]) {
+    const r = await post("/api/ask", { question: "help" }, h);
+    assert.equal(r.status, 400);
+  }
+  assert.equal(facCalls.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("PAYMENT-SIGNATURE alone is read like X-PAYMENT, tier included", async () => {
+  const cheap = await terms("ask", { question: "help" }, { "x-payer": holder.address });
+  const r = await post("/api/ask", { question: "help" }, { "PAYMENT-SIGNATURE": await signed(holder, cheap) });
+  assert.equal(r.status, 200);
+  assert.equal(((await r.json()) as any).receipt.tier, "holder");
+  const r2 = await post("/api/ask", { question: "help" }, { "PAYMENT-SIGNATURE": await signed(stranger, cheap) });
+  assert.equal(r2.status, 402);
+  // the same value in both headers is one payment, not a conflict
+  const full = await terms("ask", { question: "help" });
+  const h = await signed(stranger, full);
+  assert.equal((await post("/api/ask", { question: "help" }, { "PAYMENT-SIGNATURE": h, "X-PAYMENT": h })).status, 200);
+});
+
+test("a payment signed for another recipient or another amount is refused by the strict facilitator", async () => {
+  const a = await terms("ask", { question: "help" });
+  const other = await signed(stranger, { ...a, payTo: worker.address });
+  assert.equal((await post("/api/ask", { question: "help" }, { "X-PAYMENT": other })).status, 402);
+  assert.equal(sent.length, 0);
+});
+
+test("the payer of a task cannot claim it", async () => {
+  const a = await terms("hire", { request: "walk my dog" });
+  const r = await post("/api/hire", { request: "walk my dog" }, { "X-PAYMENT": await signed(stranger, a) });
+  const { task } = (await r.json()) as any;
+  const claim = await post(`/api/tasks/${task.id}/claim`, { worker: stranger.address.toLowerCase() }, { "x-worker-token": "secret" });
+  assert.equal(claim.status, 409);
+});
+
+test("without WORKER_TOKEN, hiring is off before any 402 and the board is closed", async () => {
+  const at = startApp({ WORKER_TOKEN: "", WIF_WORKER_REWARD: "0" });
+  assert.equal((await post("/api/hire", { request: "x" }, {}, at)).status, 503);
+  assert.equal((await post("/api/tasks/any/claim", { worker: worker.address }, {}, at)).status, 401);
+  assert.equal((await post("/api/tasks/any/claim", { worker: worker.address }, { "x-worker-token": "" }, at)).status, 401);
+  // asking still works
+  assert.equal((await post("/api/ask", { question: "help" }, {}, at)).status, 402);
+  assert.equal(facCalls.length, 0);
+});
+
+test("a call that fails after the settlement still answers with the receipt", async () => {
+  class BrokenStore extends Store {
+    addLedger(): never {
+      throw new Error("disk full at https://rpc.example/v2/KEY123");
+    }
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
+  dirs.push(dir);
+  const at = startApp({}, new BrokenStore(dir));
+  const a = await terms("ask", { question: "help" }, {}, at);
+  const r = await post("/api/ask", { question: "help" }, { "X-PAYMENT": await signed(stranger, a) }, at);
+  assert.equal(r.status, 500);
+  const body = (await r.json()) as any;
+  assert.equal(body.paid, true);
+  assert.equal(body.receipt.settleTx, "0x" + "ab".repeat(32));
+  assert.doesNotMatch(JSON.stringify(body), /KEY123|rpc\.example/);
+});
+
+test("safeMessage drops URLs, so an RPC key never reaches the ledger or a response", () => {
+  const ethersLike = Object.assign(new Error('could not coalesce error (info={ "requestUrl": "https://rpc.example/v2/KEY123" })'), {
+    shortMessage: "could not coalesce error",
+  });
+  assert.equal(safeMessage(ethersLike), "could not coalesce error");
+  assert.equal(safeMessage(new Error("fetch failed for https://rpc.example/v2/KEY123 and wss://x.y/KEY")), "fetch failed for [url] and [url]");
+  assert.equal(safeMessage("plain"), "plain");
+  assert.ok(safeMessage(new Error("x".repeat(500))).length <= 200);
 });

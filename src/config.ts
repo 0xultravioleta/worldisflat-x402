@@ -137,6 +137,8 @@ export function loadConfig(env: Env = process.env): Config {
     cashback: amount(env, "WIF_CASHBACK", "0", WIF_DECIMALS),
     workerReward: amount(env, "WIF_WORKER_REWARD", "0", WIF_DECIMALS),
   };
+  // 0 would make every payer a holder
+  if (wif.holderMin <= 0n) throw new ConfigError("WIF_HOLDER_MIN must be above zero");
   const merchantKey = str(env, "MERCHANT_PRIVATE_KEY");
   if ((wif.cashback > 0n || wif.workerReward > 0n) && (!merchantKey || !wif.token)) {
     throw new ConfigError("WIF_CASHBACK / WIF_WORKER_REWARD need MERCHANT_PRIVATE_KEY and a $WIF token");

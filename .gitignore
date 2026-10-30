@@ -1,0 +1,18 @@
+# secrets: wallet keys live only here
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+coverage/
+data/
+*.log
+.DS_Store
+
+# terraform
+deploy/aws/.terraform/
+deploy/aws/.terraform.lock.hcl
+deploy/aws/terraform.tfstate*
+deploy/aws/*.tfvars
+!deploy/aws/terraform.tfvars.example

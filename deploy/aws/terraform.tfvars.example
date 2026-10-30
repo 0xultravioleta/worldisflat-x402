@@ -1,0 +1,12 @@
+# copy to terraform.tfvars (gitignored) and fill in; never commit it. The merchant key also lands in the Terraform
+# state and in the container's environment: that wallet holds only the $WIF cashback budget and a little gas.
+image                = ":flatfee.web.1"
+network              = "robinhood"
+pay_to               = "0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6"
+public_url           = ""
+wif_cashback         = "10"
+wif_worker_reward    = "50"
+wif_daily_budget     = "500"
+merchant_private_key = ""
+# required, at least 16 characters: openssl rand -hex 16
+worker_token         = ""

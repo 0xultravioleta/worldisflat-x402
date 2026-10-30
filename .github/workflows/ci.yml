@@ -1,0 +1,27 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+        # closed network: the suite needs no RPC, no anvil and no facilitator. Node 22's fetch honours the proxy
+        # variables only with NODE_USE_ENV_PROXY=1; test/network.test.ts checks that the network is really closed.
+        env:
+          HTTPS_PROXY: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+          NO_PROXY: 127.0.0.1,localhost
+          NODE_USE_ENV_PROXY: "1"
+          NODE_OPTIONS: --disable-warning=UNDICI-EHPA

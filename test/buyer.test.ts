@@ -30,7 +30,7 @@ app.post("/api/ask", (c) => {
 let server: { close: () => void };
 let url = "";
 before(() => {
-  const port = 41000 + Math.floor(Math.random() * 9000);
+  const port = 44000 + Math.floor(Math.random() * 3900);
   server = serve({ fetch: app.fetch, port });
   url = `http://127.0.0.1:${port}/api/ask`;
 });

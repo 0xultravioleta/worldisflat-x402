@@ -29,7 +29,7 @@ type Route = "ask" | "hire";
 const MAX_TEXT = 500;
 
 interface X402State {
-  settle: () => Promise<{ success: boolean; transactionHash?: string; transaction?: string; payer?: string }>;
+  settle: () => Promise<{ success: boolean; transactionHash?: string; transaction?: string; payer?: string; replayed?: boolean }>;
   verifyResult: { payer?: string };
   payment: unknown;
 }
@@ -229,7 +229,14 @@ export function createApp({
           return;
         }
         const settleTx = settled.transactionHash ?? settled.transaction ?? null;
-        // one authorization, one service: whatever the facilitator answers for a resend, the call is not run twice.
+        // Only a NEW settlement is served. A resend bound with X-UVD-Purchase comes back from the facilitator as the
+        // original success, marked replayed; it is never served or paid back again, whatever this server's disk
+        // remembers (on Lightsail, every restart starts with an empty DATA_DIR).
+        if (settled.replayed) {
+          response = c.json({ error: "this payment was already settled for an earlier request; it is not served again", paid: true, settleTx }, 409);
+          return;
+        }
+        // second layer, for a facilitator that would not mark the replay: the ledger serves one authorization once.
         // The check and the ledger entry below happen with no await in between.
         const earlier = store.servedFor(signed!.authorization);
         if (earlier) {

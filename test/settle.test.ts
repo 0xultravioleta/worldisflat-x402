@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, beforeEach, test } from "node:test";
@@ -23,9 +24,12 @@ const payTo = Wallet.createRandom().address;
 const TX = "0x" + "ab".repeat(32);
 
 // "spend-once": settle succeeds the first time a nonce is seen and refuses it after that.
-// "refuse": settle refuses everything. "resend": a nonce already spent comes back as the original success, marked
-// replayed, as the facilitator answers a resend bound with the same X-UVD-Purchase.
-let settleMode: "spend-once" | "refuse" | "resend" = "spend-once";
+// "refuse": settle refuses everything.
+// "resend": a nonce already spent comes back as the original success, marked replayed (the `Idempotent-Replayed`
+// header the SDK reads), as the facilitator answers a resend bound with X-UVD-Purchase. Generous on purpose: any
+// context, not only the original one.
+// "resend-unmarked": the same, without the mark: a facilitator that would not say it is a replay.
+let settleMode: "spend-once" | "refuse" | "resend" | "resend-unmarked" = "spend-once";
 const spent = new Set<string>();
 const calls: string[] = [];
 const fac = new Hono();
@@ -42,7 +46,12 @@ fac.post("/settle", async (c) => {
   const ok = { success: true, transaction: TX, network: "eip155:46630", payer: from };
   if (settleMode === "refuse") return c.json({ success: false, errorReason: "insufficient_funds", network: "eip155:46630" });
   if (spent.has(nonce)) {
-    return settleMode === "resend" ? c.json({ ...ok, replayed: true }) : c.json({ success: false, errorReason: "authorization_already_used", network: "eip155:46630" });
+    if (settleMode === "resend") {
+      c.header("Idempotent-Replayed", "true");
+      return c.json({ ...ok, replayed: true });
+    }
+    if (settleMode === "resend-unmarked") return c.json(ok);
+    return c.json({ success: false, errorReason: "authorization_already_used", network: "eip155:46630" });
   }
   spent.add(nonce);
   return c.json(ok);
@@ -65,9 +74,19 @@ const dirs: string[] = [];
 const logs: string[] = [];
 let facUrl = "";
 let base = "";
-let nextPort = 40000 + Math.floor(Math.random() * 10000);
+// its own port range: test files run in parallel (app 30000-36999, settle 37000-40999, chain 41000-43999, buyer 44000-47999)
+let nextPort = 37000 + Math.floor(Math.random() * 3500);
+
+const merchantKey = Wallet.createRandom().privateKey;
 
 function startApp(deps: Partial<AppDeps> = {}): string {
+  const port = nextPort++;
+  serveApp(port, deps);
+  return `http://127.0.0.1:${port}`;
+}
+
+/** one server on `port` over a fresh, empty DATA_DIR: what a restarted Lightsail container gets */
+function serveApp(port: number, deps: Partial<AppDeps> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-settle-"));
   dirs.push(dir);
   const cfg = loadConfig({
@@ -76,12 +95,12 @@ function startApp(deps: Partial<AppDeps> = {}): string {
     DATA_DIR: dir,
     WIF_ADDRESS: "0x00000000000000000000000000000000000000f1",
     WIF_CASHBACK: "10",
-    MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
+    MERCHANT_PRIVATE_KEY: merchantKey,
   });
   const app = createApp({ cfg, chain, store: new Store(dir), log: (m) => logs.push(m), ...deps });
-  const port = nextPort++;
-  servers.push(serve({ fetch: app.fetch, port }));
-  return `http://127.0.0.1:${port}`;
+  const server = serve({ fetch: app.fetch, port });
+  servers.push(server);
+  return server;
 }
 
 before(() => {
@@ -148,10 +167,10 @@ test("REF-C: a payment sent again later is refused by the paywall; one cashback"
   assert.equal(sent.length, 1);
 });
 
-async function purchase(body: string) {
+async function purchase(body: string, at = base) {
   const ctx = createPurchaseContext() as unknown as Record<string, string>;
   ctx.method = "POST";
-  ctx.url = new URL(`${base}/api/ask`).toString();
+  ctx.url = new URL(`${at}/api/ask`).toString();
   ctx.bodySha256 = createHash("sha256").update(body).digest("hex");
   return purchaseContextHeader(ctx as never);
 }
@@ -166,8 +185,8 @@ test("REF-D: a POST bound with X-UVD-Purchase (the SDK's fetchWithReceipt) is pa
   assert.equal(sent.length, 1);
 });
 
-test("one authorization is served once, even when the facilitator answers a bound resend with the original success", async () => {
-  settleMode = "resend";
+test("a facilitator that does not mark a replay: the ledger still serves one authorization once", async () => {
+  settleMode = "resend-unmarked";
   const before = (await ledger()).length;
   const body = JSON.stringify({ question: "help" });
   const h = await header();
@@ -181,6 +200,68 @@ test("one authorization is served once, even when the facilitator answers a boun
   assert.equal(b.settleTx, TX);
   assert.equal(sent.length, 1, "a resend paid the cashback again");
   assert.equal((await ledger()).length, before + 1);
+});
+
+const bound = (at: string, h: string, ctx: string, body: string) =>
+  fetch(`${at}/api/ask`, { method: "POST", headers: { "content-type": "application/json", "X-PAYMENT": h, "X-UVD-Purchase": ctx }, body });
+
+test("REF-E: a bound payment sent three times at once, then again: one 200, one cashback", async () => {
+  settleMode = "resend";
+  const body = JSON.stringify({ question: "help" });
+  const h = await header();
+  const ctx = await purchase(body);
+  const rs = await Promise.all([0, 1, 2].map(() => bound(base, h, ctx, body)));
+  assert.equal(rs.filter((r) => r.status === 200).length, 1, `statuses ${rs.map((r) => r.status)}`);
+  assert.equal((await bound(base, h, ctx, body)).status, 409);
+  assert.equal(sent.length, 1);
+});
+
+test("REF-F: someone who copied the X-PAYMENT binds it to a purchase context of their own: not served", async () => {
+  settleMode = "resend";
+  const body = JSON.stringify({ question: "help" });
+  const h = await header();
+  assert.equal((await bound(base, h, await purchase(body), body)).status, 200);
+  const thief = await bound(base, h, await purchase(body), body);
+  assert.equal(thief.status, 409);
+  assert.equal(sent.length, 1);
+});
+
+/** a request on a new connection each time, so a server that was closed and started again on the same port is reached */
+function fresh(url: string, headers: Record<string, string> = {}, body: string | null = null): Promise<{ status: number; json: any }> {
+  return new Promise((resolve, reject) => {
+    const h = body === null ? headers : { "content-type": "application/json", "content-length": String(Buffer.byteLength(body)), ...headers };
+    const req = http.request(url, { method: body === null ? "GET" : "POST", agent: false, headers: h }, (res) => {
+      let d = "";
+      res.on("data", (chunk) => (d += chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, json: d ? JSON.parse(d) : null }));
+    });
+    req.on("error", reject);
+    req.end(body ?? undefined);
+  });
+}
+
+test("REF-G: after a restart with an empty DATA_DIR, the same bound resend is not served again and pays no $WIF", async () => {
+  settleMode = "resend";
+  const port = nextPort++;
+  const at = `http://127.0.0.1:${port}`;
+  const first = serveApp(port);
+  const body = JSON.stringify({ question: "help" });
+  const accept = (await fresh(`${at}/api/ask`, {}, body)).json.accepts[0];
+  const typed = typedDataFor(accept, payer.address);
+  const h = paymentHeader(accept, typed, await payer.signTypedData(typed.domain, typed.types, typed.message)) as string;
+  const headers = { "X-PAYMENT": h, "X-UVD-Purchase": await purchase(body, at) };
+  assert.equal((await fresh(`${at}/api/ask`, headers, body)).status, 200);
+  assert.equal(sent.length, 1);
+  // the container restarts: same URL, same merchant, same facilitator, nothing left on disk
+  await new Promise((r) => first.close(r));
+  serveApp(port);
+  assert.equal((await fresh(`${at}/api/ledger`)).json.length, 0, "the new server should start with an empty ledger");
+  const again = await fresh(`${at}/api/ask`, headers, body);
+  assert.equal(again.status, 409, `served again after the restart: ${again.status}`);
+  assert.equal(again.json.paid, true);
+  assert.equal(again.json.settleTx, TX);
+  assert.equal(sent.length, 1, "a second cashback for one payment");
+  assert.equal((await fresh(`${at}/api/ledger`)).json.length, 0);
 });
 
 test("if the SDK ever let an unsettled payment reach the handler, nothing is served and no $WIF goes out", async () => {

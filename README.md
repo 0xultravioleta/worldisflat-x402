@@ -154,17 +154,21 @@ runs (`src/double/`, `scripts/`), the tests (`test/`), and the deploy recipe (`D
 - The holder price comes from the address the signature commits to, never from a header: a non-holder who signs the
   holder price is refused (tested on the fork and in `test/app.test.ts`).
 - The payment settles before the call is served: the SDK's paywall settles first (`settlementStrategy: "before-handler"`,
-  written down in `src/app.ts`), and the handler still refuses a payment whose settlement did not succeed. One
-  authorization (payer and nonce) is served once: a replay, one after the other or several at once, is refused, and the
-  ledger refuses an authorization it already served, even if a facilitator answers a resend with the original success
+  written down in `src/app.ts`), and the handler still refuses a payment whose settlement did not succeed.
+- Only a new settlement is served, and it pays its cashback once. A resend of a payment that already settled is refused,
+  one after the other or several at once: unbound, the SDK refuses it; bound with `X-UVD-Purchase`, the facilitator
+  answers with the original success marked as a replay, and the app answers `409` with the settlement hash, without
+  serving it or sending $WIF. That check needs nothing on disk, so it holds after a restart with an empty `DATA_DIR`.
+  As a second layer, for a facilitator that would not mark the replay, the ledger in `state.json` refuses an
+  authorization (payer and nonce) it already served; that layer lasts only as long as `DATA_DIR` does
   (`test/settle.test.ts`, in CI).
 - Bad input is refused before the 402, so nobody pays for a rejected request. A failed cashback never fails a paid
   call; the ledger records why. A call that fails after its settlement still answers with the receipt. Error text is
   stripped of URLs before it is stored or returned (an RPC URL can carry an API key).
 - The merchant wallet is the hard cap: give it only the $WIF you are willing to give away. On top of that,
   `WIF_DAILY_BUDGET` (default 500 $WIF) caps what the server sends per UTC day, cashback and rewards together. It is kept
-  in `DATA_DIR/state.json`, so a restart does not refill it; a fresh `DATA_DIR` does (a redeployed Lightsail container
-  starts with an empty disk), and so does `npm run reset`. A transfer that was broadcast counts as sent even if it was
+  in `DATA_DIR/state.json`, so a restart that keeps the disk does not refill it; a fresh `DATA_DIR` does (on Lightsail,
+  every restart or redeploy of the container starts with an empty disk), and so does `npm run reset`. A transfer that was broadcast counts as sent even if it was
   not seen mined.
 - `npm run demo` runs on a fork with mainnet's chain id, so a signature made there is valid on mainnet: the page turns
   browser-wallet payments off on the demo, and only the demo's throwaway wallet signs.

@@ -90,7 +90,8 @@ const dirs: string[] = [];
 let base = "";
 let facUrl = "";
 const merchantKey = Wallet.createRandom().privateKey;
-let nextPort = 30000 + Math.floor(Math.random() * 10000);
+// each test file draws its ports from its own range (they run in parallel), all below the ephemeral range (49152)
+let nextPort = 30000 + Math.floor(Math.random() * 6000);
 
 function startApp(env: Record<string, string> = {}, store?: Store, deps: Partial<AppDeps> = {}): string {
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));

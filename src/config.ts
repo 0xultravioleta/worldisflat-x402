@@ -84,7 +84,8 @@ function str(env: Env, key: string): string | null {
 function address(env: Env, key: string, fallback: string | null = null): string | null {
   const v = str(env, key) ?? fallback;
   if (v === null) return null;
-  if (!isAddress(v)) throw new ConfigError(`${key} is not an address: ${v}`);
+  // the value is not repeated: a private key pasted into the wrong variable would be printed whole
+  if (!isAddress(v)) throw new ConfigError(`${key} is not an address (0x and 40 hex digits); the value is not shown`);
   return getAddress(v.toLowerCase());
 }
 

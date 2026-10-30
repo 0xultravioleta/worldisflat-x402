@@ -85,6 +85,13 @@ test("a malformed private key is refused by name, and the message never contains
   assert.equal(privateKey({ K: ` 0x${good} ` }, "K"), "0x" + good);
   assert.equal(privateKey({ K: "" }, "K"), null);
   assert.equal(loadConfig({ PAY_TO, MERCHANT_PRIVATE_KEY: good }).merchantKey, "0x" + good);
+  // a key pasted into an address variable is not repeated back either
+  for (const key of ["PAY_TO", "WIF_ADDRESS"]) {
+    assert.throws(() => loadConfig({ PAY_TO, [key]: "0x" + good }), (e: unknown) => {
+      const m = (e as Error).message;
+      return e instanceof ConfigError && m.startsWith(`${key} is not an address`) && !m.includes(good.slice(0, 20));
+    }, key);
+  }
 });
 
 test("confirms only the exact approved amount", () => {

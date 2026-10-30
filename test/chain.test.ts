@@ -49,7 +49,7 @@ test("the holder tier starts exactly at WIF_HOLDER_MIN", async () => {
     };
     return c.json(Array.isArray(body) ? body.map(one) : one(body));
   });
-  const port = 40000 + Math.floor(Math.random() * 10000);
+  const port = 41000 + Math.floor(Math.random() * 2900);
   const server = serve({ fetch: rpc.fetch, port });
   try {
     const chain = connectChain(loadConfig({ NETWORK: "robinhood", PAY_TO: someone, RPC_URL: `http://127.0.0.1:${port}`, WIF_HOLDER_MIN: "100" }));

@@ -47,16 +47,30 @@ const cfg = loadConfig({
   DATA_DIR: dataDir,
   PORT: String(port),
 });
-const app = createApp({ cfg, chain: connectChain(cfg), store: new Store(dataDir) });
+const app = createApp({ cfg, chain: connectChain(cfg), store: new Store(dataDir), localFork: true });
 app.use("/*", serveStatic({ root: "./public" }));
 const web = serve({ fetch: app.fetch, port });
 const base = `http://127.0.0.1:${port}`;
 
+const stop = (code = 0) => {
+  web.close();
+  fac.close();
+  fork.stop();
+  rmSync(dataDir, { recursive: true, force: true });
+  process.exit(code);
+};
+process.on("SIGINT", () => stop());
+process.on("SIGTERM", () => stop());
+
 const client = new X402Client({ defaultChain: "robinhood", rpcOverrides: { robinhood: fork.url } });
 await client.connectWithPrivateKey(guest.privateKey, "robinhood");
 const json = { "content-type": "application/json" };
-await client.fetch(`${base}/api/ask`, { method: "POST", maxAmount: "0.10", init: { headers: json, body: JSON.stringify({ question: "What is the latest block and gas on the chain?" }) } });
-await client.fetch(`${base}/api/hire`, { method: "POST", maxAmount: "0.50", init: { headers: json, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and send a photo of the menu." }) } });
+const ask = await client.fetch(`${base}/api/ask`, { method: "POST", maxAmount: "0.10", init: { headers: json, body: JSON.stringify({ question: "What is the latest block and gas on the chain?" }) } });
+const hire = await client.fetch(`${base}/api/hire`, { method: "POST", maxAmount: "0.50", init: { headers: json, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and send a photo of the menu." }) } });
+if (ask.status !== 200 || hire.status !== 201) {
+  console.error(`the demo's own payments did not go through: ask ${ask.status} ${(await ask.text()).slice(0, 200)}, hire ${hire.status} ${(await hire.text()).slice(0, 200)}`);
+  stop(1);
+}
 
 console.log(`
 Flat Fee demo on a fork of ${chainInfo.label}: http://localhost:${port}
@@ -64,14 +78,5 @@ Flat Fee demo on a fork of ${chainInfo.label}: http://localhost:${port}
   merchant        ${merchant.address} (holds 1000 $WIF for cashback)
   worker token    demo   (paste it in the task board to claim and complete tasks)
   paid so far     1 question and 1 hire task, from a throwaway wallet (see "Paid calls" and "Task board")
+  browser wallet  off: the page will not ask a wallet to sign on this fork (a signature here is valid on mainnet)
 Ctrl-C to stop.`);
-
-const stop = () => {
-  web.close();
-  fac.close();
-  fork.stop();
-  rmSync(dataDir, { recursive: true, force: true });
-  process.exit(0);
-};
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);

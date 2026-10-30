@@ -52,16 +52,27 @@ variable "wif_worker_reward" {
   default = "50"
 }
 
-# Lightsail container env vars are visible to anyone with Lightsail access in the account: the merchant wallet must
-# only ever hold the $WIF cashback budget and a little gas, never more.
+variable "wif_daily_budget" {
+  type    = string
+  default = "500"
+}
+
+# The key ends up in plain text in terraform.tfvars (gitignored), in the Terraform state, and in the container's
+# environment, which anyone with Lightsail access in the account can read: the merchant wallet must only ever hold the
+# $WIF cashback budget and a little gas, never more.
 variable "merchant_private_key" {
   type      = string
   sensitive = true
 }
 
+# WIF_WORKER_REWARD needs it, or the container refuses to start; it also gates the task board
 variable "worker_token" {
   type      = string
   sensitive = true
+  validation {
+    condition     = length(var.worker_token) >= 16
+    error_message = "worker_token must be at least 16 characters (e.g. openssl rand -hex 16): hiring and the worker reward need it."
+  }
 }
 
 resource "aws_lightsail_container_service" "flatfee" {
@@ -88,6 +99,7 @@ resource "aws_lightsail_container_service_deployment_version" "flatfee" {
       PUBLIC_URL           = var.public_url
       WIF_CASHBACK         = var.wif_cashback
       WIF_WORKER_REWARD    = var.wif_worker_reward
+      WIF_DAILY_BUDGET     = var.wif_daily_budget
       MERCHANT_PRIVATE_KEY = var.merchant_private_key
       WORKER_TOKEN         = var.worker_token
       PORT                 = "3000"

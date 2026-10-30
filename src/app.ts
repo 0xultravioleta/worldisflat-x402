@@ -5,7 +5,7 @@ import { cors } from "hono/cors";
 import { isAddress, getAddress } from "ethers";
 import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
-import type { Chain, Tier } from "./chain.js";
+import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
 import type { Store } from "./store.js";
 
@@ -16,6 +16,12 @@ export interface AppDeps {
   /** milliseconds a paid response waits for its $WIF cashback before answering "pending" */
   cashbackWaitMs?: number;
   log?: (msg: string) => void;
+  /** the clock of the daily $WIF budget */
+  now?: () => Date;
+  /** the x402 paywall factory; tests wrap it to play an SDK that lets an unsettled payment through */
+  middleware?: typeof createHonoMiddleware;
+  /** serving a local fork (npm run demo): the landing page then refuses to sign with a browser wallet */
+  localFork?: boolean;
 }
 
 type Route = "ask" | "hire";
@@ -44,21 +50,26 @@ export interface SignedPayment {
   payer: string;
   value: bigint | null;
   network: string;
+  /** `${payer}:${nonce}`: one EIP-3009 authorization, which is served at most once */
+  authorization: string;
 }
 
-/** what a payment header commits to: the payer, the amount and the network; null when the SDK could not route it */
+/** what a payment header commits to: the payer, the amount, the network and the nonce; null when it is not routable */
 export function signedPayment(value: string | null): SignedPayment | null {
   if (!value) return null;
-  const p = parsePaymentHeader(value) as { network?: unknown; payload?: { authorization?: { from?: string; value?: string } } } | null;
+  const p = parsePaymentHeader(value) as { network?: unknown; payload?: { authorization?: { from?: string; value?: string; nonce?: string } } } | null;
   const from = p?.payload?.authorization?.from;
+  const nonce = p?.payload?.authorization?.nonce;
   if (!p || typeof p.network !== "string" || typeof from !== "string" || !isAddress(from)) return null;
+  if (typeof nonce !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(nonce)) return null;
   let amount: bigint | null = null;
   try {
     amount = BigInt(p.payload?.authorization?.value ?? "");
   } catch {
     amount = null;
   }
-  return { payer: getAddress(from.toLowerCase()), value: amount, network: p.network };
+  const payer = getAddress(from.toLowerCase());
+  return { payer, value: amount, network: p.network, authorization: `${payer}:${nonce.toLowerCase()}` };
 }
 
 /**
@@ -84,33 +95,29 @@ function text(body: unknown, key: string): string | null {
   return t && t.length <= MAX_TEXT ? t : null;
 }
 
-export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = console.log }: AppDeps) {
+export function createApp({
+  cfg,
+  chain,
+  store,
+  cashbackWaitMs = 15_000,
+  log = console.log,
+  now = () => new Date(),
+  middleware = createHonoMiddleware,
+  localFork = false,
+}: AppDeps) {
   const app = new Hono();
   const redact = (e: unknown) => safeMessage(e, [cfg.rpcUrl]);
 
-  // $WIF the server may send per UTC day (cashback + worker rewards), reserved before each send and released if it
-  // fails: whatever $WIF is worth tomorrow, a loop of paid calls cannot drain the merchant faster than this
-  let budgetDay = "";
-  let spentToday = 0n;
-  const reserveWif = (amount: bigint): boolean => {
-    const day = new Date().toISOString().slice(0, 10);
-    if (day !== budgetDay) {
-      budgetDay = day;
-      spentToday = 0n;
-    }
-    if (spentToday + amount > cfg.wif.dailyBudget) return false;
-    spentToday += amount;
-    return true;
-  };
-  const releaseWif = (amount: bigint) => {
-    spentToday = spentToday >= amount ? spentToday - amount : 0n;
-  };
+  // $WIF the server may send per UTC day (cashback + worker rewards), kept in state.json so a restart does not refill
+  // it. Reserved before each send; given back only when nothing was broadcast, since a transfer with a hash may still
+  // be mined. Whatever $WIF is worth tomorrow, a loop of paid calls cannot drain the merchant faster than this.
   const sendWifBudgeted = async (to: string, amount: bigint) => {
-    if (!reserveWif(amount)) throw new Error("daily $WIF budget used up (WIF_DAILY_BUDGET)");
+    const day = now().toISOString().slice(0, 10);
+    if (!store.reserveWif(day, amount, cfg.wif.dailyBudget)) throw new Error("daily $WIF budget used up (WIF_DAILY_BUDGET)");
     try {
       return await chain.sendWif(to, amount);
     } catch (e) {
-      releaseWif(amount);
+      if (!(e instanceof WifTransferUnconfirmed)) store.releaseWif(day, amount);
       throw e;
     }
   };
@@ -128,8 +135,10 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
     for (const tier of ["standard", "holder"] as const) {
       paywalls.set(
         `${route}:${tier}`,
-        createHonoMiddleware({
+        middleware({
           facilitatorUrl: cfg.facilitatorUrl,
+          // the SDK's default, written down: the payment settles before the handler runs, or the handler never runs
+          settlementStrategy: "before-handler",
           accepts: [
             {
               scheme: "exact",
@@ -175,9 +184,11 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
         return t.tx;
       })
       .catch((e: unknown) => {
-        store.updateLedger(entryId, { cashbackError: redact(e) });
+        // broadcast but not seen mined: keep the hash, it may still land
+        const tx = e instanceof WifTransferUnconfirmed ? e.tx : null;
+        store.updateLedger(entryId, { cashbackTx: tx, cashbackError: redact(e) });
         log(`cashback to ${payer} failed: ${redact(e)}`);
-        return null;
+        return tx;
       });
     const timeout = new Promise<"pending">((r) => setTimeout(() => r("pending"), cashbackWaitMs).unref?.());
     const r = await Promise.race([send, timeout]);
@@ -186,9 +197,10 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
 
   function paid(route: Route, validate: (body: unknown) => string | null, handle: (c: Context, input: string, ctx: PaidCtx) => Promise<Response>) {
     return async (c: Context) => {
+      // read a copy: the SDK reads the raw body again to check an X-UVD-Purchase context
       let body: unknown = null;
       try {
-        body = await c.req.json();
+        body = await c.req.raw.clone().json();
       } catch {
         body = null;
       }
@@ -210,15 +222,38 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
         // the SDK settles before this runs: from here on the buyer has paid, so every exit carries the receipt
         const x402 = c.get("x402" as never) as X402State;
         const settled = await x402.settle();
+        // the paywall refuses an unsettled payment before this point; if it ever let one through, serve nothing
+        if (!settled.success) {
+          log(`unsettled payment reached the ${route} handler (${signed!.payer}); nothing served`);
+          response = c.json({ error: "the payment did not settle, so nothing was served", retryable: false }, 502);
+          return;
+        }
+        const settleTx = settled.transactionHash ?? settled.transaction ?? null;
+        // one authorization, one service: whatever the facilitator answers for a resend, the call is not run twice.
+        // The check and the ledger entry below happen with no await in between.
+        const earlier = store.servedFor(signed!.authorization);
+        if (earlier) {
+          response = c.json({ error: "this payment was already served", paid: true, settleTx: earlier.settleTx, entry: earlier.id }, 409);
+          return;
+        }
         const ctx: PaidCtx = {
           tier,
           payer: signed!.payer,
-          settleTx: settled.transactionHash ?? settled.transaction ?? null,
+          settleTx,
           price: price(route, tier),
           entryId: "",
         };
         try {
-          ctx.entryId = store.addLedger({ kind: route, network: cfg.chain.caip2, payer: ctx.payer, tier, price: ctx.price.toString(), settleTx: ctx.settleTx, cashbackTx: null }).id;
+          ctx.entryId = store.addLedger({
+            kind: route,
+            network: cfg.chain.caip2,
+            payer: ctx.payer,
+            tier,
+            price: ctx.price.toString(),
+            settleTx,
+            cashbackTx: null,
+            authorization: signed!.authorization,
+          }).id;
           response = await handle(c, input, ctx);
         } catch (e) {
           // the detail (paths, ids) stays in the server log; the buyer gets a fixed message and the proof of payment
@@ -258,6 +293,7 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
   app.get("/api/info", (c) =>
     c.json({
       name: "Flat Fee",
+      localFork,
       // the public RPC for the wallet's "add network", never RPC_URL (that one may be private or a local fork)
       network: { name: cfg.chain.name, label: cfg.chain.label, caip2: cfg.chain.caip2, chainId: cfg.chain.chainId, explorer: cfg.chain.explorer, rpcUrl: cfg.chain.rpcUrl },
       facilitator: cfg.facilitatorUrl,
@@ -379,7 +415,7 @@ export function createApp({ cfg, chain, store, cashbackWaitMs = 15_000, log = co
         const r = await sendWifBudgeted(t.worker, cfg.wif.workerReward);
         store.updateTask(t.id, { rewardTx: r.tx });
       } catch (e) {
-        store.updateTask(t.id, { rewardError: redact(e) });
+        store.updateTask(t.id, { rewardTx: e instanceof WifTransferUnconfirmed ? e.tx : null, rewardError: redact(e) });
       }
     }
     return c.json(store.task(t.id));

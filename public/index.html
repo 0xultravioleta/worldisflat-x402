@@ -12,7 +12,8 @@
     <p class="kicker">x402 · USDG · $WIF · Robinhood Chain</p>
     <h1>Flat Fee</h1>
     <p class="lead">Ask an agent or hire a human. Every call costs a flat fee in USDG, paid with one signature over x402 and
-      settled on Robinhood Chain by an open-source facilitator. Every paid call sends <b>$WIF</b> back, and $WIF holders pay half.</p>
+      settled on Robinhood Chain by an open-source facilitator. Paid calls send <b>$WIF</b> back while the day's cashback
+      budget lasts, and $WIF holders pay half.</p>
     <dl class="facts" id="facts"><div><dt>network</dt><dd>loading…</dd></div></dl>
   </header>
 
@@ -70,7 +71,8 @@ npm run buy -- "What is 0x5173b8ea6923c2d40267890d45c46a3480954773?"   # signs, 
         <li><b>Sign.</b> The wallet or agent signs an EIP-3009 <code>transferWithAuthorization</code> for exactly that amount. No gas, no approve.</li>
         <li><b>Settle.</b> Ultravioleta's x402 facilitator verifies it and settles USDG on chain, paying the gas.</li>
         <li><b>Serve.</b> The agent answers, or the task goes on the board for a human.</li>
-        <li><b>$WIF back.</b> The merchant wallet sends $WIF to the payer. Hold enough $WIF and the next call costs half.</li>
+        <li><b>$WIF back.</b> The merchant wallet sends $WIF to the payer, up to a daily budget. Hold enough $WIF and the next
+          call costs half: this page names your wallet before the 402 (<code>X-Payer</code>), so the server can quote you the holder price.</li>
       </ol>
     </section>
   </main>

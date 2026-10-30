@@ -51,3 +51,12 @@ export function paymentHeader(accept, typed, signature) {
   });
   return typeof btoa === "function" ? btoa(json) : Buffer.from(json, "utf8").toString("base64");
 }
+
+/**
+ * Why the page must not ask a browser wallet to sign, or null when it may. On a local fork (npm run demo) the chain id
+ * is mainnet's, so a signature made there is a valid mainnet authorization: only the demo's throwaway wallet signs.
+ */
+export function walletPayBlocked(info) {
+  if (!info || info.localFork !== false) return "This server runs on a local fork: a wallet signature here would be valid on mainnet, so browser payments are off. The demo already paid one question and one task from a throwaway wallet; claim and complete the task below.";
+  return null;
+}

@@ -16,12 +16,22 @@ export interface WifTransfer {
   tx: string;
 }
 
+/**
+ * A $WIF transfer that was broadcast but not seen mined in time. It may still land, so its $WIF counts as sent: the
+ * daily budget keeps it and the ledger keeps its hash.
+ */
+export class WifTransferUnconfirmed extends Error {
+  constructor(readonly tx: string, cause: unknown) {
+    super(`$WIF transfer ${tx} not confirmed yet: ${(cause as Error)?.message ?? String(cause)}`);
+  }
+}
+
 export interface Chain {
   provider: JsonRpcProvider;
   balanceOf(token: string, owner: string): Promise<bigint>;
   /** "holder" when `owner` holds at least WIF_HOLDER_MIN $WIF; "standard" if there is no $WIF token or the read fails */
   tierOf(owner: string): Promise<Tier>;
-  /** sends $WIF from the merchant wallet; resolves once the transfer is mined */
+  /** sends $WIF from the merchant wallet; resolves once the transfer is mined, rejects with WifTransferUnconfirmed when it was broadcast but not seen mined */
   sendWif(to: string, amount: bigint): Promise<WifTransfer>;
   merchantAddress: string | null;
 }
@@ -29,7 +39,15 @@ export interface Chain {
 export function connectChain(cfg: Config): Chain {
   // no request cache: two $WIF transfers in a row must each read a fresh nonce
   const provider = new JsonRpcProvider(cfg.rpcUrl, cfg.chain.chainId, { staticNetwork: true, cacheTimeout: -1 });
-  const merchant = cfg.merchantKey ? new Wallet(cfg.merchantKey, provider) : null;
+  let merchant: Wallet | null = null;
+  if (cfg.merchantKey) {
+    try {
+      merchant = new Wallet(cfg.merchantKey, provider);
+    } catch {
+      // ethers' error carries the whole key; loadConfig checks it first, this covers a Config built by hand
+      throw new Error("MERCHANT_PRIVATE_KEY is not a valid private key; the value is not shown");
+    }
+  }
   const wifToken = cfg.wif.token;
   // one writer at a time, so two paid calls never race for the same merchant nonce
   let queue: Promise<unknown> = Promise.resolve();
@@ -58,7 +76,12 @@ export function connectChain(cfg: Config): Chain {
       const run = async (): Promise<WifTransfer> => {
         const c = new Contract(wifToken, ERC20_ABI, merchant);
         const tx = await c.transfer(getAddress(to), amount);
-        const receipt = await waitForReceipt(provider, tx.hash);
+        let receipt;
+        try {
+          receipt = await waitForReceipt(provider, tx.hash);
+        } catch (e) {
+          throw new WifTransferUnconfirmed(tx.hash, e);
+        }
         if (receipt.status !== 1) throw new Error(`$WIF transfer ${tx.hash} reverted`);
         return { to: getAddress(to), amount, tx: tx.hash as string };
       };

@@ -18,6 +18,8 @@ export interface LedgerEntry {
   cashbackError?: string;
   question?: string;
   taskId?: string;
+  /** `${payer}:${nonce}` of the USDG authorization this call was served for */
+  authorization?: string;
 }
 
 export interface Task {
@@ -37,6 +39,8 @@ export interface Task {
 interface State {
   ledger: LedgerEntry[];
   tasks: Task[];
+  /** $WIF (atomic, as a string) reserved for transfers on `day` (UTC, YYYY-MM-DD); kept here so a restart does not refill it */
+  wifBudget?: { day: string; spent: string };
 }
 
 export class Store {
@@ -59,7 +63,11 @@ export class Store {
       throw new Error(`${file} is not valid JSON (${(e as Error).message}); move it away or run npm run reset`);
     }
     if (!Array.isArray(s?.ledger) || !Array.isArray(s?.tasks)) throw new Error(`${file} has no ledger/tasks arrays; move it away or run npm run reset`);
-    return { ledger: s.ledger, tasks: s.tasks };
+    const b = s.wifBudget;
+    if (b !== undefined && (typeof b?.day !== "string" || typeof b?.spent !== "string" || !/^\d+$/.test(b.spent))) {
+      throw new Error(`${file} has an unreadable wifBudget; move it away or run npm run reset`);
+    }
+    return { ledger: s.ledger, tasks: s.tasks, ...(b ? { wifBudget: b } : {}) };
   }
 
   private save() {
@@ -79,6 +87,34 @@ export class Store {
     const e = this.state.ledger.find((x) => x.id === id);
     if (!e) return;
     Object.assign(e, patch);
+    this.save();
+  }
+
+  /** the entry already served for this authorization, if any */
+  servedFor(authorization: string): LedgerEntry | undefined {
+    return this.state.ledger.find((e) => e.authorization === authorization);
+  }
+
+  /** $WIF already reserved on `day` */
+  wifSpent(day: string): bigint {
+    const b = this.state.wifBudget;
+    return b && b.day === day ? BigInt(b.spent) : 0n;
+  }
+
+  /** reserves `amount` of `day`'s $WIF budget; false, and nothing reserved, when it would go over `cap` */
+  reserveWif(day: string, amount: bigint, cap: bigint): boolean {
+    const spent = this.wifSpent(day);
+    if (spent + amount > cap) return false;
+    this.state.wifBudget = { day, spent: (spent + amount).toString() };
+    this.save();
+    return true;
+  }
+
+  /** gives back a reservation that sent nothing; a reservation from another day has already expired */
+  releaseWif(day: string, amount: bigint) {
+    const spent = this.wifSpent(day);
+    if (!this.state.wifBudget || this.state.wifBudget.day !== day) return;
+    this.state.wifBudget = { day, spent: (spent >= amount ? spent - amount : 0n).toString() };
     this.save();
   }
 

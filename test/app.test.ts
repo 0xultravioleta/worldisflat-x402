@@ -8,12 +8,12 @@ import { after, before, beforeEach, test } from "node:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { Wallet, getAddress, verifyTypedData, type BaseWallet, type JsonRpcProvider } from "ethers";
-import { createApp, safeMessage } from "../src/app.js";
-import type { Chain, Tier } from "../src/chain.js";
+import { createApp, safeMessage, type AppDeps } from "../src/app.js";
+import { WifTransferUnconfirmed, type Chain, type Tier } from "../src/chain.js";
 import { loadConfig } from "../src/config.js";
 import { Store } from "../src/store.js";
 // @ts-expect-error plain JS module shared with the browser
-import { paymentHeader, typedDataFor } from "../public/x402-browser.js";
+import { paymentHeader, typedDataFor, walletPayBlocked } from "../public/x402-browser.js";
 
 const holder = Wallet.createRandom();
 const stranger = Wallet.createRandom();
@@ -92,7 +92,7 @@ let facUrl = "";
 const merchantKey = Wallet.createRandom().privateKey;
 let nextPort = 30000 + Math.floor(Math.random() * 10000);
 
-function startApp(env: Record<string, string> = {}, store?: Store): string {
+function startApp(env: Record<string, string> = {}, store?: Store, deps: Partial<AppDeps> = {}): string {
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
   dirs.push(dir);
   const cfg = loadConfig({
@@ -106,7 +106,7 @@ function startApp(env: Record<string, string> = {}, store?: Store): string {
     WORKER_TOKEN: "secret",
     ...env,
   });
-  const app = createApp({ cfg, chain, store: store ?? new Store(dir), log: () => {} });
+  const app = createApp({ cfg, chain, store: store ?? new Store(dir), log: () => {}, ...deps });
   const port = nextPort++;
   servers.push(serve({ fetch: app.fetch, port }));
   return `http://127.0.0.1:${port}`;
@@ -167,7 +167,15 @@ test("bad input is refused before the 402 and never reaches the facilitator", as
 });
 
 test("a malformed X-PAYMENT is a 400, not a 500", async () => {
-  for (const h of ["not-base64!", Buffer.from("{}").toString("base64"), Buffer.from(JSON.stringify({ x402Version: 2, payload: {} })).toString("base64")]) {
+  const a = await terms("ask", { question: "help" });
+  const typed = typedDataFor(a, stranger.address);
+  const sig = await stranger.signTypedData(typed.domain, typed.types, typed.message);
+  // a well-formed payment whose authorization carries no nonce: it cannot be told apart from a replay
+  const noNonce = JSON.parse(Buffer.from(paymentHeader(a, typed, sig), "base64").toString());
+  delete noNonce.payload.authorization.nonce;
+  facCalls.length = 0;
+  const bad = ["not-base64!", Buffer.from("{}").toString("base64"), Buffer.from(JSON.stringify({ x402Version: 2, payload: {} })).toString("base64")];
+  for (const h of [...bad, Buffer.from(JSON.stringify(noNonce)).toString("base64")]) {
     const r = await post("/api/ask", { question: "help" }, { "X-PAYMENT": h });
     assert.equal(r.status, 400, h);
   }
@@ -276,6 +284,18 @@ test("info and quote describe the prices without secrets", async () => {
   assert.equal((await fetch(`${base}/api/quote?payer=0x12`)).status, 400);
 });
 
+test("on a local fork (npm run demo) the page will not ask a browser wallet to sign", async () => {
+  const fork = (await (await fetch(`${startApp({}, undefined, { localFork: true })}/api/info`)).json()) as any;
+  const live = (await (await fetch(`${base}/api/info`)).json()) as any;
+  assert.equal(fork.localFork, true);
+  assert.equal(live.localFork, false);
+  assert.match(walletPayBlocked(fork), /local fork/);
+  assert.equal(walletPayBlocked(live), null);
+  // no info, or an older server: closed
+  assert.match(walletPayBlocked(undefined), /local fork/);
+  assert.match(walletPayBlocked({}), /local fork/);
+});
+
 test("a decoy X-PAYMENT next to a real PAYMENT-SIGNATURE is refused, whatever the order", async () => {
   // the attacker's own signature for the holder price, plus a header naming a holder: the SDK pays from
   // PAYMENT-SIGNATURE, so the price must be decided from that one too, or the two must not be mixed at all
@@ -361,24 +381,70 @@ test("safeMessage drops URLs, so an RPC key never reaches the ledger or a respon
   assert.ok(safeMessage(new Error("x".repeat(500))).length <= 200);
 });
 
-test("the daily $WIF budget caps cashback and rewards, and a failed send gives its share back", async () => {
-  // 25 $WIF a day with 10 per call: two cashbacks fit, the third does not
-  const at = startApp({ WIF_DAILY_BUDGET: "25" });
-  const pay = async () => {
-    const a = await terms("ask", { question: "help" }, {}, at);
-    return post("/api/ask", { question: "help" }, { "X-PAYMENT": await signed(stranger, a) }, at);
-  };
+const payAt = async (at: string) => {
+  const a = await terms("ask", { question: "help" }, {}, at);
+  return post("/api/ask", { question: "help" }, { "X-PAYMENT": await signed(stranger, a) }, at);
+};
+const budgetEnv = (budget: string) => ({ WIF_DAILY_BUDGET: budget, WIF_WORKER_REWARD: "0" });
+
+test("the daily $WIF budget caps cashback to the exact amount, and a send that broadcast nothing gives its share back", async () => {
+  // 20 $WIF a day with 10 per call: exactly two cashbacks fit, the third does not
+  const at = startApp(budgetEnv("20"));
   sendFails = true;
-  assert.equal((await pay()).status, 200); // failed send: released
+  assert.equal((await payAt(at)).status, 200); // failed before broadcast: released
   sendFails = false;
-  assert.equal((await pay()).status, 200);
-  assert.equal((await pay()).status, 200);
-  const third = await pay();
+  assert.equal((await payAt(at)).status, 200);
+  assert.equal((await payAt(at)).status, 200);
+  const third = await payAt(at);
   assert.equal(third.status, 200, "the paid call is still served");
   assert.equal(((await third.json()) as any).receipt.cashback.tx, null);
   assert.equal(sent.length, 2);
   const ledger = (await (await fetch(`${at}/api/ledger`)).json()) as any[];
   assert.match(ledger[0].cashbackError, /WIF_DAILY_BUDGET/);
+});
+
+test("the $WIF budget starts again on the next UTC day", async () => {
+  let clock = new Date("2026-10-30T23:59:00Z");
+  const at = startApp(budgetEnv("10"), undefined, { now: () => clock });
+  await payAt(at);
+  await payAt(at);
+  assert.equal(sent.length, 1, "the second cashback of the day went over the budget");
+  clock = new Date("2026-10-31T00:01:00Z");
+  await payAt(at);
+  assert.equal(sent.length, 2, "the budget did not start again on the new day");
+});
+
+test("the $WIF budget survives a restart: it lives in state.json, not in the process", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-test-"));
+  dirs.push(dir);
+  await payAt(startApp(budgetEnv("10"), new Store(dir)));
+  assert.equal(sent.length, 1);
+  // a new process over the same DATA_DIR
+  const again = await payAt(startApp(budgetEnv("10"), new Store(dir)));
+  assert.equal(again.status, 200);
+  assert.equal(sent.length, 1, "the restart refilled the budget");
+});
+
+test("a $WIF transfer that was broadcast but not confirmed keeps its hash and its share of the budget", async () => {
+  const at = startApp(budgetEnv("10"));
+  const pending = "0x" + "ef".repeat(32);
+  const original = chain.sendWif;
+  chain.sendWif = async () => {
+    throw new WifTransferUnconfirmed(pending, new Error("no receipt after 60000 ms"));
+  };
+  try {
+    const r = await payAt(at);
+    assert.equal(r.status, 200);
+    assert.equal(((await r.json()) as any).receipt.cashback.tx, pending);
+  } finally {
+    chain.sendWif = original;
+  }
+  const ledger = (await (await fetch(`${at}/api/ledger`)).json()) as any[];
+  assert.equal(ledger[0].cashbackTx, pending);
+  assert.match(ledger[0].cashbackError, /not confirmed/);
+  // the 10 $WIF may still land, so they stay spent: no second cashback today
+  await payAt(at);
+  assert.equal(sent.length, 0);
 });
 
 test("errors that mention the configured RPC (even without a scheme) are redacted in the ledger", async () => {

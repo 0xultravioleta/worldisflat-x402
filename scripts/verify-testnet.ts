@@ -1,11 +1,13 @@
 // `npm run verify:testnet`: the production path against the REAL facilitator on Robinhood Chain Testnet, read-only.
-//   1. the EIP-712 domain the app signs with hashes to USDG's own on-chain DOMAIN_SEPARATOR(), on testnet and mainnet;
-//   2. the app's paywall forwards a signed USDG authorization to the facilitator's /verify. With an unfunded payer it
-//      must come back `insufficient_funds`: the facilitator parsed the v2 envelope, accepted the network, the USDG
-//      asset, the amount and the recipient, and got as far as the balance check;
-//   3. control: an expired authorization must come back `invalid_timing`, so the refusal above is not a blanket one.
-// The facilitator checks the balance before the signature, so the signature itself is proven by (1) and by the fork
-// run (`npm run e2e:fork`), where USDG's transferWithAuthorization accepts it. Nothing is settled or broadcast.
+// Four checks:
+//   1-2. the EIP-712 domain the app signs with hashes to USDG's own on-chain DOMAIN_SEPARATOR(), on testnet and mainnet;
+//   3. the app's paywall forwards a signed USDG authorization to the facilitator's /verify. The payer is a fresh
+//      throwaway wallet with no funds, so it must come back `insufficient_funds`: the facilitator parsed the v2
+//      envelope, accepted the network, the USDG asset, the amount and the recipient, and got as far as the balance check;
+//   4. control: an expired authorization must come back `invalid_timing`, so the refusal above is not a blanket one.
+// The facilitator checks the balance before the signature, so the signature itself is proven by (1-2) and by the fork
+// run (`npm run e2e:fork`), where USDG's transferWithAuthorization accepts it. The payer never holds anything and no
+// key from .env is used, so nothing can be settled or broadcast.
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,8 +21,8 @@ import { Store } from "../src/store.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const chainInfo = CHAINS["robinhood-testnet"];
-const key = process.env.PAYER_PRIVATE_KEY?.trim() || Wallet.createRandom().privateKey;
-const payer = new Wallet(key);
+const payer = Wallet.createRandom();
+const key = payer.privateKey;
 const payTo = process.env.PAY_TO?.trim() || Wallet.createRandom().address;
 
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-verify-"));
@@ -34,7 +36,7 @@ const url = `http://127.0.0.1:${port}/api/ask`;
 const init = { headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "latest block?" }) };
 
 console.log(`facilitator ${cfg.facilitatorUrl}, network ${chainInfo.caip2}`);
-console.log(`payer ${payer.address} holds ${formatUnits(usdg, USDG_DECIMALS)} testnet USDG; pay to ${payTo}`);
+console.log(`throwaway payer ${payer.address} holds ${formatUnits(usdg, USDG_DECIMALS)} testnet USDG; pay to ${payTo}`);
 
 let failed = false;
 try {
@@ -52,11 +54,8 @@ try {
   const r = await client.fetch(url, { method: "POST", maxAmount: "0.10", init });
   const body = await r.text();
   console.log(`\nsigned payment -> ${r.status} ${body.slice(0, 300)}`);
-  if (usdg >= 100_000n) {
-    console.log("payer is funded: a 200 here is a real testnet settlement (see the receipt above)");
-    failed ||= r.status !== 200;
-  } else {
-    const ok = r.status === 402 && /insufficient_funds/.test(body);
+  {
+    const ok = usdg === 0n && r.status === 402 && /insufficient_funds/.test(body);
     console.log(ok ? "PASS  the facilitator took the payment as far as the balance check (insufficient_funds)" : "FAIL  expected insufficient_funds");
     failed ||= !ok;
   }

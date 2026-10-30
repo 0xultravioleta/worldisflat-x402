@@ -1,4 +1,4 @@
-import { paymentHeader, typedDataFor } from "/x402-browser.js";
+import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -26,6 +26,12 @@ async function loadInfo() {
   document.querySelectorAll("[data-price]").forEach((n) => (n.textContent = info.prices[n.dataset.price].standard));
   document.querySelectorAll("[data-origin]").forEach((n) => (n.textContent = location.origin));
   document.querySelectorAll("[data-caip2]").forEach((n) => (n.textContent = info.network.caip2));
+  const blocked = walletPayBlocked(info);
+  for (const b of [$("#ask-pay"), $("#hire-pay")]) {
+    b.disabled = !!blocked;
+    if (blocked) b.title = blocked;
+  }
+  if (blocked) show($("#ask-out"), blocked);
 }
 
 function show(out, value, bad = false) {
@@ -56,6 +62,8 @@ async function wallet() {
 
 /** 402 -> sign in the wallet -> retry with X-PAYMENT */
 async function payAndCall(path, body, out, button) {
+  const blocked = walletPayBlocked(info);
+  if (blocked) return show(out, blocked, true);
   button.disabled = true;
   try {
     const { eth, from } = await wallet();

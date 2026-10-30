@@ -25,6 +25,15 @@ test("sendWif refuses without a merchant wallet or with a zero amount", async ()
   await assert.rejects(withKey.sendWif(someone, 0n), /above zero/);
 });
 
+test("a Config built by hand with a malformed merchant key fails without printing it", () => {
+  const cfg = loadConfig({ NETWORK: "robinhood", PAY_TO: someone, RPC_URL: "http://127.0.0.1:9" });
+  const bad = "0x" + "de".repeat(31) + "f";
+  assert.throws(() => connectChain({ ...cfg, merchantKey: bad }), (e: unknown) => {
+    const m = (e as Error).message;
+    return /MERCHANT_PRIVATE_KEY/.test(m) && !m.includes(bad.slice(2, 20));
+  });
+});
+
 test("the holder tier starts exactly at WIF_HOLDER_MIN", async () => {
   // a fake JSON-RPC that answers balanceOf(owner) with the balance encoded in the owner's last byte, in whole $WIF
   const { serve } = await import("@hono/node-server");

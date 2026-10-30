@@ -2,19 +2,15 @@
 // PAYER_PRIVATE_KEY wallet and prints the answer and the settlement. URL defaults to http://localhost:$PORT.
 import { existsSync } from "node:fs";
 import { Wallet } from "ethers";
-import { loadConfig } from "../src/config.js";
 import { buy } from "./lib/buyer.js";
+import { configOrExit, keyOrExit } from "./lib/env.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const args = process.argv.slice(2);
 const hire = args[0] === "--hire";
 const text = (hire ? args.slice(1) : args).join(" ").trim() || "What is the latest block and gas on the chain?";
-const cfg = loadConfig();
-const key = process.env.PAYER_PRIVATE_KEY?.trim();
-if (!key) {
-  console.error("PAYER_PRIVATE_KEY is not set in .env");
-  process.exit(1);
-}
+const cfg = configOrExit();
+const key = keyOrExit("PAYER_PRIVATE_KEY");
 const payer = new Wallet(key).address;
 const base = process.env.FLATFEE_URL?.replace(/\/+$/, "") ?? `http://localhost:${cfg.port}`;
 const route = hire ? "hire" : "ask";

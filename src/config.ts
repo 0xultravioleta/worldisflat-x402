@@ -1,5 +1,5 @@
 // Everything the app knows about Robinhood Chain, USDG, $WIF and prices, read from the environment once.
-import { getAddress, isAddress } from "ethers";
+import { SigningKey, getAddress, isAddress } from "ethers";
 
 export type NetworkName = "robinhood" | "robinhood-testnet";
 
@@ -107,6 +107,25 @@ export function formatUnits(atomic: bigint, decimals: number): string {
   return `${neg ? "-" : ""}${whole}${frac ? "." + frac : ""}`;
 }
 
+/**
+ * A private key from the environment: 64 hex digits, with or without 0x, inside the secp256k1 range. Returned with 0x.
+ * The error names the variable and never the value: ethers' own error would print the whole key, and a key one digit
+ * short is a few hundred guesses away from the real one.
+ */
+export function privateKey(env: Env, key: string): string | null {
+  const v = str(env, key);
+  if (v === null) return null;
+  const k = /^[0-9a-fA-F]{64}$/.test(v) ? `0x${v}` : v;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(k)) throw new ConfigError(`${key} is not a private key (0x and 64 hex digits); the value is not shown`);
+  try {
+    // throws for 0 and for anything at or above the curve order
+    void new SigningKey(k).publicKey;
+  } catch {
+    throw new ConfigError(`${key} is outside the secp256k1 range; the value is not shown`);
+  }
+  return k;
+}
+
 function amount(env: Env, key: string, fallback: string, decimals: number): bigint {
   return parseUnitsStrict(str(env, key) ?? fallback, decimals, key);
 }
@@ -142,9 +161,13 @@ export function loadConfig(env: Env = process.env): Config {
   };
   // 0 would make every payer a holder
   if (wif.holderMin <= 0n) throw new ConfigError("WIF_HOLDER_MIN must be above zero");
-  const merchantKey = str(env, "MERCHANT_PRIVATE_KEY");
+  const merchantKey = privateKey(env, "MERCHANT_PRIVATE_KEY");
   if ((wif.cashback > 0n || wif.workerReward > 0n) && (!merchantKey || !wif.token)) {
     throw new ConfigError("WIF_CASHBACK / WIF_WORKER_REWARD need MERCHANT_PRIVATE_KEY and a $WIF token");
+  }
+  // a budget below one transfer would turn every cashback or reward into a refusal
+  for (const [name, v] of [["WIF_CASHBACK", wif.cashback], ["WIF_WORKER_REWARD", wif.workerReward]] as const) {
+    if (v > wif.dailyBudget) throw new ConfigError(`WIF_DAILY_BUDGET is below one ${name}`);
   }
   const workerToken = str(env, "WORKER_TOKEN");
   if (wif.workerReward > 0n && !workerToken) {

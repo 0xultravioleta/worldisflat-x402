@@ -2,15 +2,17 @@
 import { existsSync } from "node:fs";
 import { Contract, JsonRpcProvider, Wallet, formatEther, getAddress, isAddress } from "ethers";
 import { CHAINS, USDG_DECIMALS, WIF_DECIMALS, formatUnits } from "../src/config.js";
+import { keyOrExit } from "./lib/env.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const who: [string, string][] = [];
-const add = (label: string, key?: string, addr?: string) => {
-  const a = key?.trim() ? new Wallet(key.trim()).address : addr?.trim() && isAddress(addr.trim()) ? getAddress(addr.trim()) : null;
+const add = (label: string, keyName?: string, addr?: string) => {
+  // keyOrExit checks the key first, so a malformed one is named, never printed
+  const a = keyName && process.env[keyName]?.trim() ? new Wallet(keyOrExit(keyName)).address : addr?.trim() && isAddress(addr.trim()) ? getAddress(addr.trim()) : null;
   if (a) who.push([label, a]);
 };
-add("payer", process.env.PAYER_PRIVATE_KEY);
-add("merchant", process.env.MERCHANT_PRIVATE_KEY);
+add("payer", "PAYER_PRIVATE_KEY");
+add("merchant", "MERCHANT_PRIVATE_KEY");
 if (!who.some(([, a]) => process.env.PAY_TO && a.toLowerCase() === process.env.PAY_TO.toLowerCase())) add("pay-to", undefined, process.env.PAY_TO);
 if (!who.length) {
   console.error("no wallets in .env (PAYER_PRIVATE_KEY, MERCHANT_PRIVATE_KEY, PAY_TO)");

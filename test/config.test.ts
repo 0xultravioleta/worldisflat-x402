@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { pickSkill } from "../src/agent.js";
-import { ConfigError, formatUnits, loadConfig, parseUnitsStrict } from "../src/config.js";
+import { ConfigError, formatUnits, loadConfig, parseUnitsStrict, privateKey } from "../src/config.js";
 import { confirms } from "../scripts/lib/buyer.js";
 
 const PAY_TO = "0x00000000000000000000000000000000000000aa";
@@ -58,8 +58,33 @@ test("loadConfig refuses unsafe or broken settings", () => {
     [{ PAY_TO, NETWORK: "robinhood", WIF_WORKER_REWARD: "5", MERCHANT_PRIVATE_KEY: "0x" + "11".repeat(32) }, /WORKER_TOKEN/],
     [{ PAY_TO, PORT: "70000" }, /PORT/],
     [{ PAY_TO, WIF_HOLDER_MIN: "0" }, /WIF_HOLDER_MIN/],
+    [{ PAY_TO, NETWORK: "robinhood", WIF_CASHBACK: "10", WIF_DAILY_BUDGET: "9.99", MERCHANT_PRIVATE_KEY: "0x" + "11".repeat(32) }, /WIF_DAILY_BUDGET is below one WIF_CASHBACK/],
+    [{ PAY_TO, NETWORK: "robinhood", WIF_WORKER_REWARD: "50", WIF_DAILY_BUDGET: "49", WORKER_TOKEN: "t", MERCHANT_PRIVATE_KEY: "0x" + "11".repeat(32) }, /below one WIF_WORKER_REWARD/],
   ];
   for (const [env, msg] of cases) assert.throws(() => loadConfig(env), msg, JSON.stringify(env));
+});
+
+// a key one digit short, a key with a typo, and keys outside the curve: ethers would print each one whole
+const BAD_KEYS = ["0x" + "de".repeat(31) + "f", "0x" + "de".repeat(31) + "zz", "0x" + "de".repeat(33), "0x" + "00".repeat(32), "0x" + "ff".repeat(32), "0x" + "de".repeat(31)];
+
+test("a malformed private key is refused by name, and the message never contains it", () => {
+  for (const bad of BAD_KEYS) {
+    for (const env of [{ PAY_TO, NETWORK: "robinhood", WIF_CASHBACK: "10", MERCHANT_PRIVATE_KEY: bad }, { PAY_TO, MERCHANT_PRIVATE_KEY: bad }]) {
+      let message = "";
+      assert.throws(() => loadConfig(env), (e: unknown) => {
+        message = (e as Error).message;
+        return e instanceof ConfigError && /MERCHANT_PRIVATE_KEY/.test(message);
+      }, bad);
+      assert.ok(!message.toLowerCase().includes(bad.slice(2, 20).toLowerCase()), `the message carries the key: ${message}`);
+    }
+    assert.throws(() => privateKey({ PAYER_PRIVATE_KEY: bad }, "PAYER_PRIVATE_KEY"), /PAYER_PRIVATE_KEY .*not shown/);
+  }
+  // a good key passes, with or without 0x, and comes back with it
+  const good = "de".repeat(32);
+  assert.equal(privateKey({ K: good }, "K"), "0x" + good);
+  assert.equal(privateKey({ K: ` 0x${good} ` }, "K"), "0x" + good);
+  assert.equal(privateKey({ K: "" }, "K"), null);
+  assert.equal(loadConfig({ PAY_TO, MERCHANT_PRIVATE_KEY: good }).merchantKey, "0x" + good);
 });
 
 test("confirms only the exact approved amount", () => {

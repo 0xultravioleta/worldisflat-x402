@@ -21,8 +21,9 @@ run() {
 
 run install npm ci --no-audit --no-fund
 run typecheck npm run typecheck
-# unit tests with the network closed: they must not need an RPC or the facilitator
-run test env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost npm test
+# unit tests with the network closed: they must not need an RPC or the facilitator. Node 22's fetch honours the proxy
+# only with NODE_USE_ENV_PROXY=1 (test/network.test.ts checks that it is really closed)
+run test env HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost NODE_USE_ENV_PROXY=1 NODE_OPTIONS=--disable-warning=UNDICI-EHPA npm test
 if command -v gitleaks >/dev/null 2>&1; then
   run secrets gitleaks detect --redact --no-banner --log-opts="$base...HEAD"
 else

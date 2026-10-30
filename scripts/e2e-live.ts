@@ -1,9 +1,10 @@
 // `npm run e2e:testnet` / `npm run e2e:mainnet`: one real paid call through the real facilitator, from the
 // PAYER_PRIVATE_KEY wallet to PAY_TO, with the server running in this process. Prints the explorer links.
 //
-// Mainnet spends real money, so it refuses to sign unless the exact amounts were approved:
-//   CONFIRM_MAINNET_SPEND=0.10 npm run e2e:mainnet                        # cashback off
-//   CONFIRM_MAINNET_SPEND=0.10 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet  # with WIF_CASHBACK=10 in .env
+// Mainnet spends real money, and its point is the contest's two transactions (a USDG settlement and a $WIF transfer),
+// so with NETWORK=robinhood, PAY_TO, WIF_CASHBACK=10 and MERCHANT_PRIVATE_KEY in .env it refuses to read the chain or
+// sign anything unless both approved amounts are given and match exactly (scripts/lib/live.ts):
+//   CONFIRM_MAINNET_SPEND=0.10 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,24 +12,29 @@ import { serve } from "@hono/node-server";
 import { Wallet, formatEther } from "ethers";
 import { createApp } from "../src/app.js";
 import { connectChain } from "../src/chain.js";
-import { USDG_DECIMALS, WIF_DECIMALS, formatUnits, loadConfig, txUrl, type NetworkName } from "../src/config.js";
+import { USDG_DECIMALS, WIF_DECIMALS, formatUnits, txUrl, type NetworkName } from "../src/config.js";
 import { Store } from "../src/store.js";
-import { buy, confirms } from "./lib/buyer.js";
+import { buy } from "./lib/buyer.js";
+import { configOrExit, keyOrExit } from "./lib/env.js";
+import { livePassed, liveRunRefusal } from "./lib/live.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const network = process.argv[2] as NetworkName;
 if (network !== "robinhood" && network !== "robinhood-testnet") throw new Error("usage: e2e-live.ts robinhood|robinhood-testnet");
-const mainnet = network === "robinhood";
 
-const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-live-"));
-const env: Record<string, string | undefined> = { ...process.env, NETWORK: network, DATA_DIR: dataDir };
+const env: Record<string, string | undefined> = { ...process.env, NETWORK: network };
 // RPC_URL in .env belongs to whichever network .env is for; a live run on the other network uses the public RPC
 if (process.env.NETWORK !== network) delete env.RPC_URL;
-const cfg = loadConfig(env);
-const key = process.env.PAYER_PRIVATE_KEY?.trim();
-if (!key) throw new Error("PAYER_PRIVATE_KEY is not set in .env");
+const cfg = configOrExit(env);
+const key = keyOrExit("PAYER_PRIVATE_KEY");
+const refusal = liveRunRefusal(cfg, process.env);
+if (refusal) {
+  console.error(refusal);
+  process.exit(1);
+}
 const payer = new Wallet(key).address;
 const chain = connectChain(cfg);
+const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-live-"));
 
 const fail = (msg: string): never => {
   console.error(msg);
@@ -50,9 +56,6 @@ if (cfg.wif.cashback > 0n) {
   const [mWif, mEth] = [await wifOf(m), await chain.provider.getBalance(m)];
   console.log(`merchant ${m}: ${formatUnits(mWif, WIF_DECIMALS)} $WIF, ${formatEther(mEth)} ETH; cashback ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF`);
   if (mWif < cfg.wif.cashback || mEth === 0n) fail(`the merchant wallet needs ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF and a little ETH for the cashback`);
-  if (mainnet && !confirms(process.env.CONFIRM_MAINNET_WIF, cfg.wif.cashback, WIF_DECIMALS)) {
-    fail(`mainnet: this run sends ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF cashback. Re-run with CONFIRM_MAINNET_WIF=${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} once approved.`);
-  }
 }
 
 const app = createApp({ cfg, chain, store: new Store(dataDir), cashbackWaitMs: 60_000 });
@@ -77,7 +80,8 @@ try {
   console.log(`USDG: payer -${formatUnits(before.payer - after.payer, USDG_DECIMALS)}, pay-to +${formatUnits(after.payTo - before.payTo, USDG_DECIMALS)} ${moved ? "(PASS)" : "(FAIL)"}`);
   if (receipt.settleTx) console.log(`settlement: ${txUrl(cfg.chain, receipt.settleTx)}`);
   if (receipt.cashback?.tx) console.log(`$WIF cashback: ${receipt.cashback.url ?? receipt.cashback.tx} (+${formatUnits(after.wif - before.wif, WIF_DECIMALS)} $WIF)`);
-  ok = r.status === 200 && moved;
+  ok = livePassed({ status: r.status, usdgMoved: moved, cashback: cfg.wif.cashback, cashbackTx: receipt.cashback?.tx, wifGained: after.wif - before.wif });
+  if (!ok && moved && cfg.wif.cashback > 0n) console.error(`FAIL  the USDG settled but the ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF cashback did not land (see the ledger error above)`);
 } catch (e) {
   console.error((e as Error).message);
 } finally {

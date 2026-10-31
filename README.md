@@ -3,7 +3,7 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Paid calls send **$WIF** back (up to a daily budget), and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: `[DEMO_URL]` ·
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com ·
 Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem
@@ -99,6 +99,11 @@ On a real network: `cp .env.example .env`, set `PAY_TO`, `npm start`, then
 `402 Payment Required` and the USDG terms. With a funded `PAYER_PRIVATE_KEY`, `npm run buy -- "your question"` pays and
 prints the answer with the settlement link (on mainnet: `CONFIRM_MAINNET_SPEND=0.10`, with `PAY_TO` set to the expected
 recipient).
+
+The live demo is the same server on Robinhood Chain mainnet, with the $WIF cashback on:
+`curl -i -X POST https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'`
+returns the same `402` with the mainnet USDG terms. Paying there, from the page or with
+`FLATFEE_URL=https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com npm run buy`, spends real USDG.
 
 ## Real transactions on Robinhood Chain mainnet
 

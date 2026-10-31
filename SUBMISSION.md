@@ -72,7 +72,7 @@ Ten paid calls make you a $WIF holder, and holders pay half on every call after 
 
 ### Links
 ```text
-Live product: [DEMO_URL]
+Live product: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com
 Demo video: [VIDEO_URL]
 Repo: [REPO_URL]  (private is allowed if you invite the GitHub account wifonrh; c0der sends the invite)
 ```

@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,4 +73,29 @@ test("e2e:mainnet stops before the chain when CONFIRM_MAINNET_WIF is given but W
   });
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /WIF_CASHBACK=10 and MERCHANT_PRIVATE_KEY/);
+});
+
+test("e2e:mainnet with FLATFEE_URL stops before the chain when that server's /api/info does not match .env", async () => {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(`${req.method} ${req.url}`);
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ localFork: true }));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const r = await run("scripts/e2e-live.ts", ["robinhood"], {
+      PAYER_PRIVATE_KEY: "0x" + "11".repeat(32),
+      WIF_CASHBACK: "10",
+      MERCHANT_PRIVATE_KEY: "0x" + "22".repeat(32),
+      CONFIRM_MAINNET_SPEND: "0.10",
+      CONFIRM_MAINNET_WIF: "10",
+      FLATFEE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+    });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /FLATFEE_URL: .*localFork: false.*refusing/);
+    assert.deepEqual(seen, ["GET /api/info"]);
+  } finally {
+    server.close();
+  }
 });

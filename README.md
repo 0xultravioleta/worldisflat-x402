@@ -117,7 +117,9 @@ The run that produces them: with `NETWORK=robinhood`, `PAY_TO` (the merchant), `
 and `PAYER_PRIVATE_KEY` in `.env`, `CONFIRM_MAINNET_SPEND=0.10 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet`. Before it reads
 the chain or signs, it refuses unless both amounts are given and match the configuration exactly, and it refuses to
 settle USDG without the $WIF leg (`scripts/lib/live.ts`, `test/live.test.ts`). It passes only if the USDG moved and the
-whole cashback landed.
+whole cashback landed. With `FLATFEE_URL` set to the live demo, it pays that server instead of starting its own, once the
+server's `/api/info` shows the same network, recipient, USDG, $WIF, prices and cashback as `.env`; that server sends the
+cashback with its own merchant key, and the run checks on chain that it landed.
 
 ## Robinhood Chain, USDG, $WIF and x402: where in the code
 

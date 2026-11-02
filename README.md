@@ -3,7 +3,7 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Paid calls send **$WIF** back (up to a daily budget), and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: `[DEMO_URL]` ·
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com ·
 Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem
@@ -100,19 +100,33 @@ On a real network: `cp .env.example .env`, set `PAY_TO`, `npm start`, then
 prints the answer with the settlement link (on mainnet: `CONFIRM_MAINNET_SPEND=0.10`, with `PAY_TO` set to the expected
 recipient).
 
+The live demo is the same server on Robinhood Chain mainnet, with the $WIF cashback on:
+`curl -i -X POST https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'`
+returns the same `402` with the mainnet USDG terms. Paying there spends real USDG: from the page with a wallet, or with
+`npm run buy` and `NETWORK=robinhood`, `PAY_TO=0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`, `FLATFEE_URL=https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com`
+and `CONFIRM_MAINNET_SPEND` set to the amount the `402` asks for.
+
 ## Real transactions on Robinhood Chain mainnet
 
 | what | transaction |
 |---|---|
-| USDG settlement through the facilitator (payer → merchant, 0.10 USDG) | `[EXPLORER_TX_URL]` |
-| $WIF cashback (merchant → payer, 10 $WIF) | `[WIF_TX_URL]` |
+| USDG settlement through the facilitator (payer → merchant, 0.05 USDG: the holder price) | [0x432e…6f33](https://robinhoodchain.blockscout.com/tx/0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33) |
+| $WIF cashback (merchant → payer, 10 $WIF) | [0xb0f3…f640](https://robinhoodchain.blockscout.com/tx/0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640) |
+
+Both come from one paid question to the live demo, on 2 Nov 2026 at 02:38 UTC (blocks 103875528 and 103875599). The
+payer held about 1,016 $WIF before the run (funded by the team; it has no ETH), so the demo quoted and settled the holder
+price, 0.05 USDG instead of 0.10, and still sent the 10 $WIF cashback. The facilitator (`0x1030…13C7`) submitted the
+settlement and paid its gas.
 
 Wallets: payer `0x6Ce9DA69A46842DCe90e6a14382Ed06eb1c46af5`, merchant / pay-to `0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`.
-The run that produces them: with `NETWORK=robinhood`, `PAY_TO` (the merchant), `WIF_CASHBACK=10`, `MERCHANT_PRIVATE_KEY`
-and `PAYER_PRIVATE_KEY` in `.env`, `CONFIRM_MAINNET_SPEND=0.10 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet`. Before it reads
-the chain or signs, it refuses unless both amounts are given and match the configuration exactly, and it refuses to
-settle USDG without the $WIF leg (`scripts/lib/live.ts`, `test/live.test.ts`). It passes only if the USDG moved and the
-whole cashback landed.
+The run that produced them: with `NETWORK=robinhood`, `PAY_TO` (the merchant), `WIF_CASHBACK=10`, `MERCHANT_PRIVATE_KEY`
+and `PAYER_PRIVATE_KEY` in `.env`,
+`FLATFEE_URL=https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com CONFIRM_MAINNET_SPEND=0.05 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet`.
+Before it reads the chain or signs, it refuses unless both amounts are given and match the configuration exactly, and it
+refuses to settle USDG without the $WIF leg (`scripts/lib/live.ts`, `test/live.test.ts`). With `FLATFEE_URL` it pays
+that server instead of starting its own, once the server's `/api/info` shows the same network, recipient, USDG, $WIF
+token and holder minimum, ask prices and cashback as `.env`; that server sends the cashback with its own merchant key. The run passes only if the USDG
+moved and the whole cashback landed on chain; this one printed `payer -0.05, pay-to +0.05 (PASS)` and `+10 $WIF`.
 
 ## Robinhood Chain, USDG, $WIF and x402: where in the code
 

@@ -1,10 +1,13 @@
 // `npm run e2e:testnet` / `npm run e2e:mainnet`: one real paid call through the real facilitator, from the
-// PAYER_PRIVATE_KEY wallet to PAY_TO, with the server running in this process. Prints the explorer links.
+// PAYER_PRIVATE_KEY wallet to PAY_TO, to a server running in this process or, with FLATFEE_URL, to that running server.
+// Prints the explorer links.
 //
 // Mainnet spends real money, and its point is the contest's two transactions (a USDG settlement and a $WIF transfer),
 // so with NETWORK=robinhood, PAY_TO, WIF_CASHBACK=10 and MERCHANT_PRIVATE_KEY in .env it refuses to read the chain or
 // sign anything unless both approved amounts are given and match exactly (scripts/lib/live.ts):
 //   CONFIRM_MAINNET_SPEND=0.10 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet
+// With FLATFEE_URL it pays that running server (the deploy) instead, after checking that its /api/info matches .env;
+// that server sends the cashback with its own merchant key, which must be the wallet of MERCHANT_PRIVATE_KEY here.
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,7 +19,7 @@ import { USDG_DECIMALS, WIF_DECIMALS, formatUnits, txUrl, type NetworkName } fro
 import { Store } from "../src/store.js";
 import { buy } from "./lib/buyer.js";
 import { configOrExit, keyOrExit } from "./lib/env.js";
-import { livePassed, liveRunRefusal } from "./lib/live.js";
+import { ledgerCashback, livePassed, liveRunRefusal, remoteRefusal } from "./lib/live.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const network = process.argv[2] as NetworkName;
@@ -31,6 +34,21 @@ const refusal = liveRunRefusal(cfg, process.env);
 if (refusal) {
   console.error(refusal);
   process.exit(1);
+}
+const remote = process.env.FLATFEE_URL?.trim().replace(/\/+$/, "") || null;
+let info: any = null;
+if (remote) {
+  try {
+    info = await (await fetch(`${remote}/api/info`, { signal: AbortSignal.timeout(20_000) })).json();
+  } catch (e) {
+    console.error(`FLATFEE_URL: cannot read ${remote}/api/info: ${(e as Error).message}`);
+    process.exit(1);
+  }
+  const mismatch = remoteRefusal(cfg, info);
+  if (mismatch) {
+    console.error(mismatch);
+    process.exit(1);
+  }
 }
 const payer = new Wallet(key).address;
 const chain = connectChain(cfg);
@@ -47,7 +65,8 @@ const wifOf = (a: string) => (cfg.wif.token ? chain.balanceOf(cfg.wif.token, a) 
 const tier = await chain.tierOf(payer);
 const price = tier === "holder" ? cfg.prices.askHolder : cfg.prices.ask;
 const before = { payer: await usdgOf(payer), payTo: await usdgOf(cfg.payTo), wif: await wifOf(payer) };
-console.log(`${cfg.chain.label} (${cfg.chain.caip2}) via ${cfg.facilitatorUrl}`);
+console.log(`${cfg.chain.label} (${cfg.chain.caip2}) via ${remote ? String(info.facilitator).slice(0, 120) : cfg.facilitatorUrl}`);
+if (remote) console.log(`paying ${remote} (FLATFEE_URL), not a server in this process`);
 console.log(`payer ${payer}: ${formatUnits(before.payer, USDG_DECIMALS)} USDG, tier ${tier}, will pay ${formatUnits(price, USDG_DECIMALS)} USDG to ${cfg.payTo}`);
 
 if (before.payer < price) fail(`fund ${payer} with at least ${formatUnits(price, USDG_DECIMALS)} USDG on ${cfg.chain.label} first`);
@@ -58,13 +77,27 @@ if (cfg.wif.cashback > 0n) {
   if (mWif < cfg.wif.cashback || mEth === 0n) fail(`the merchant wallet needs ${formatUnits(cfg.wif.cashback, WIF_DECIMALS)} $WIF and a little ETH for the cashback`);
 }
 
-const app = createApp({ cfg, chain, store: new Store(dataDir), cashbackWaitMs: 60_000 });
+// a server answers "pending" when the cashback takes longer than it waits (15 s on the deploy): its ledger gets the hash
+async function cashbackFromLedger(base: string, settleTx: string) {
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 3_000));
+    try {
+      const found = ledgerCashback(await (await fetch(`${base}/api/ledger`, { signal: AbortSignal.timeout(10_000) })).json(), settleTx);
+      if (found) return found;
+    } catch {
+      // try again
+    }
+  }
+  return null;
+}
+
 const port = 20000 + Math.floor(Math.random() * 20000);
-const server = serve({ fetch: app.fetch, port });
+const server = remote ? null : serve({ fetch: createApp({ cfg, chain, store: new Store(dataDir), cashbackWaitMs: 60_000 }).fetch, port });
+const base = remote ?? `http://127.0.0.1:${port}`;
 let ok = false;
 try {
   const r = await buy({
-    url: `http://127.0.0.1:${port}/api/ask`,
+    url: `${base}/api/ask`,
     body: { question: "What is the latest block and gas on the chain?" },
     network,
     key,
@@ -75,6 +108,13 @@ try {
   });
   console.log(`HTTP ${r.status}: ${r.body.answer ?? JSON.stringify(r.body).slice(0, 300)}`);
   const receipt = r.body.receipt ?? {};
+  if (receipt.cashback?.tx === "pending" && receipt.settleTx) {
+    console.log("cashback pending: reading the server's ledger");
+    const c = await cashbackFromLedger(base, receipt.settleTx);
+    if (c?.error) console.error(`the server recorded a cashback error: ${c.error.slice(0, 300)}`);
+    receipt.cashback.tx = c?.tx ?? null;
+    receipt.cashback.url = c?.tx ? txUrl(cfg.chain, c.tx) : null;
+  }
   const after = { payer: await usdgOf(payer), payTo: await usdgOf(cfg.payTo), wif: await wifOf(payer) };
   const moved = before.payer - after.payer === price && after.payTo - before.payTo === price;
   console.log(`USDG: payer -${formatUnits(before.payer - after.payer, USDG_DECIMALS)}, pay-to +${formatUnits(after.payTo - before.payTo, USDG_DECIMALS)} ${moved ? "(PASS)" : "(FAIL)"}`);
@@ -85,7 +125,7 @@ try {
 } catch (e) {
   console.error((e as Error).message);
 } finally {
-  server.close();
+  server?.close();
   rmSync(dataDir, { recursive: true, force: true });
 }
 process.exit(ok ? 0 : 1);

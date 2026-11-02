@@ -1,0 +1,11 @@
+Flat Fee: ask an agent or hire a human for a flat USDG fee on Robinhood Chain, with $WIF back. No accounts, no API keys, no gas for the buyer.
+
+Every call is plain HTTP. Ask a question and the endpoint answers 402 Payment Required, with a price in USDG on Robinhood Chain: ten cents. A wallet or an agent signs one EIP-3009 authorization, and that's the payment. If you hold 100 $WIF or more, you pay half: five cents.
+
+This is a real paid question to this live demo. The payer held $WIF, so it paid the holder price: 0.05 USDG. The transfer was settled on Robinhood Chain mainnet by Ultravioleta's open-source x402 facilitator, which paid the gas.
+
+Right after the payment settles, the merchant wallet sends 10 $WIF back to whoever paid. Also on chain, also real. The cashback has a daily budget and is worth far less than the fee, so it can't be farmed.
+
+That's the flywheel. You pay in USDG and get $WIF back. Ten paid calls make you a holder, and holders pay half on every call after that. Humans who complete hire tasks earn 50 $WIF, which also buys them the cheaper price. More holders, more use.
+
+Flat Fee is open source and live now. The repo, the demo and both transactions are linked below. Built by Ultravioleta DAO.

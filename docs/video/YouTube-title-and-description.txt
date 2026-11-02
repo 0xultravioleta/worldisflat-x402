@@ -1,0 +1,27 @@
+TITLE
+Flat Fee | x402 + USDG + $WIF on Robinhood Chain | The World is Flat hackathon
+
+DESCRIPTION
+Ask an agent or hire a human for a flat USDG fee on Robinhood Chain. Flat Fee uses plain HTTP and x402: get a price, sign an EIP-3009 authorization, and let Ultravioleta's open-source facilitator settle the payment and pay the gas.
+
+Paid calls return 10 $WIF while the daily cashback budget lasts. Hold 100+ $WIF and pay half: 0.05 USDG per question instead of 0.10. Humans who complete hire tasks earn 50 $WIF.
+
+This demo shows a live HTTP 402 quote and a real, previously settled mainnet question: 0.05 USDG from the payer to the merchant, followed by 10 $WIF cashback from the merchant to the payer. Both receipts were independently checked against Robinhood Chain's public RPC and shown in the explorer.
+
+Built by Ultravioleta DAO for The World is Flat hackathon. Open source, MIT.
+
+LINKS
+Live demo: https://flatfee.ultravioletadao.xyz/
+Repository: https://github.com/0xultravioleta/worldisflat-x402
+Payment, 0.05 USDG: https://robinhoodchain.blockscout.com/tx/0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33
+Cashback, 10 $WIF: https://robinhoodchain.blockscout.com/tx/0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640
+
+CHAPTERS
+00:00 Ask an agent or hire a human
+00:15 Live HTTP 402 quote and one-signature payment
+00:40 Real 0.05 USDG settlement
+01:05 Real 10 $WIF cashback
+01:25 The $WIF flywheel
+01:45 Open source and live now
+
+Voice-over: ElevenLabs, Eric. English narration follows docs/VIDEO-SCRIPT.md. Video: 1080p, 30 fps, 2 minutes. English subtitles included.

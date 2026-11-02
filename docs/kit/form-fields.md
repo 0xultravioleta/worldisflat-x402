@@ -48,7 +48,7 @@ robinhood-chain, usdg, x402, rust, typescript, evm
 ```
 ### Links
 ```text
-Repo: [REPO_URL]
+Repo: https://github.com/0xultravioleta/worldisflat-x402
 Demo: [DEMO_URL]
 Settlement tx: [EXPLORER_TX_URL]
 Video: [VIDEO_URL]

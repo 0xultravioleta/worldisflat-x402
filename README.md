@@ -72,7 +72,7 @@ buyer ──POST──▶ Flat Fee ──402 (USDG price)──▶ buyer signs E
 
 You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fork runs.
 
-1. `git clone [REPO_URL] && cd worldisflat-x402 && npm install`
+1. `git clone https://github.com/0xultravioleta/worldisflat-x402 && cd worldisflat-x402 && npm install`
 2. **`npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet with the real
    USDG and $WIF contracts, and has already paid for one question and one hire task from a throwaway wallet. You see
    both rows under **Paid calls**, each with its settlement and its $WIF cashback, and the task under **Task board**.

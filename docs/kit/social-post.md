@@ -14,7 +14,7 @@ Pay-per-call agents on Robinhood Chain: USDG over x402, settled by our open-sour
 
 3/ What's next: Add Execution Market human tasks priced in USDG, and agent subscriptions.
 
-4/ Repo: [REPO_URL] · Demo: [DEMO_URL]
+4/ Repo: https://github.com/0xultravioleta/worldisflat-x402 · Demo: [DEMO_URL]
 ```
 
 ## LinkedIn
@@ -25,5 +25,5 @@ Pay-per-call AI agents and hire-a-human tasks priced in USDG on Robinhood Chain,
 
 Why: Robinhood Chain brings stablecoins to a mainstream retail audience. We wanted the simplest useful thing an agent can sell there: an answer, or a person who goes and checks something, for a few cents of USDG.
 
-Built by Ultravioleta DAO on Execution Market, PayBox and our open-source x402 facilitator. Video: [VIDEO_URL] · Repo: [REPO_URL]
+Built by Ultravioleta DAO on Execution Market, PayBox and our open-source x402 facilitator. Video: [VIDEO_URL] · Repo: https://github.com/0xultravioleta/worldisflat-x402
 ```

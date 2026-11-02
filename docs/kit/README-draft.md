@@ -21,7 +21,7 @@ requester / agent ──▶ task + budget ──▶ worker claims ──▶ evid
 [Replace with the exact files, endpoints and calls. Judges look for this section. Example: `src/rails/...` calls ..., see screenshot docs/sponsor-usage.png.]
 
 ## Try it (judges: under 5 minutes)
-1. `git clone [REPO_URL] && cd [REPO]`
+1. `git clone https://github.com/0xultravioleta/worldisflat-x402 && cd [REPO]`
 2. `cp .env.example .env` and fill the test values listed in `.env.example` (no real keys in the repo).
 3. `npm install && npm run dev` (or `docker compose up`).
 4. Open http://localhost:3000 → do **[STEP]** → see **[RESULT]**.

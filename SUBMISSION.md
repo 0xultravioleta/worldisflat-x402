@@ -74,7 +74,7 @@ Ten paid calls make you a $WIF holder, and holders pay half on every call after 
 ```text
 Live product: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com
 Demo video: [VIDEO_URL]
-Repo: [REPO_URL]  (private is allowed if you invite the GitHub account wifonrh; c0der sends the invite)
+Repo: https://github.com/0xultravioleta/worldisflat-x402
 ```
 
 ### Contracts (we deploy none; these are the ones the app calls on Robinhood Chain mainnet)
@@ -100,7 +100,7 @@ Merchant / pay-to (sends the $WIF cashback): 0xb9056196d3D00b4c09ec2E5E123E30b37
 - [ ] Every `[PLACEHOLDER]` replaced (search for `[`).
 - [ ] The two mainnet transactions are real and open on https://robinhoodchain.blockscout.com.
 - [ ] The live link answers `402` on `POST /api/ask` and the page loads.
-- [ ] Repo public, or `wifonrh` invited and accepted.
+- [x] Repo public since 2026-11-02: https://github.com/0xultravioleta/worldisflat-x402
 - [ ] Terms box read and ticked by Luis; then **submit** (not only save), and screenshot the confirmation.
 - [ ] Optional, after submitting: an update ("dispatch") with the video, and a post from Luis's account.
 

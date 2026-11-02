@@ -1,0 +1,94 @@
+1
+00:00:00,550 --> 00:00:07,544
+Flat Fee: ask an agent or hire a human for a flat
+USDG fee on Robinhood Chain, with $WIF back.
+
+2
+00:00:07,864 --> 00:00:11,621
+No accounts, no API keys, no gas for the buyer.
+
+3
+00:00:15,550 --> 00:00:17,681
+Every call is plain HTTP.
+
+4
+00:00:17,820 --> 00:00:22,634
+Ask a question and the endpoint answers 402 Payment Required,
+
+5
+00:00:22,736 --> 00:00:26,776
+with a price in USDG on Robinhood Chain: ten cents.
+
+6
+00:00:26,914 --> 00:00:32,632
+A wallet or an agent signs one EIP-3009
+authorization, and that's the payment.
+
+7
+00:00:32,952 --> 00:00:37,921
+If you hold 100 $WIF or more, you pay half: five cents.
+
+8
+00:00:40,550 --> 00:00:43,313
+This is a real paid question to this live demo.
+
+9
+00:00:43,581 --> 00:00:49,053
+The payer held $WIF, so it paid the holder price: 0.05 USDG.
+
+10
+00:00:49,322 --> 00:00:57,117
+The transfer was settled on Robinhood Chain mainnet
+by Ultravioleta's open-source x402 facilitator,
+
+11
+00:00:57,256 --> 00:00:59,361
+which paid the gas.
+
+12
+00:01:05,550 --> 00:01:11,061
+Right after the payment settles, the merchant
+wallet sends 10 $WIF back to whoever paid.
+
+13
+00:01:11,846 --> 00:01:14,377
+Also on chain, also real.
+
+14
+00:01:14,941 --> 00:01:20,749
+The cashback has a daily budget and is worth
+far less than the fee, so it can't be farmed.
+
+15
+00:01:25,550 --> 00:01:26,920
+That's the flywheel.
+
+16
+00:01:27,382 --> 00:01:30,300
+You pay in USDG and get $WIF back.
+
+17
+00:01:30,620 --> 00:01:35,550
+Ten paid calls make you a holder, and
+holders pay half on every call after that.
+
+18
+00:01:36,116 --> 00:01:42,361
+Humans who complete hire tasks earn 50 $WIF,
+which also buys them the cheaper price.
+
+19
+00:01:42,926 --> 00:01:44,670
+More holders, more use.
+
+20
+00:01:45,550 --> 00:01:47,784
+Flat Fee is open source and live now.
+
+21
+00:01:48,001 --> 00:01:51,344
+The repo, the demo and both transactions are linked below.
+
+22
+00:01:51,910 --> 00:01:54,609
+Built by Ultravioleta DAO.

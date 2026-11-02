@@ -21,15 +21,18 @@ Members: add c0der ([C0DER_NAME]) only if Saúl decides. Up to 4 people; each pe
 
 ## 2. Your project
 
-### Name · 8 chars
+### Project name · 8 chars
 ```text
 Flat Fee
 ```
 
-### One liner · 99 chars
+### One liner · 78 chars (the form allows 80)
 ```text
-Ask an agent or hire a human for a flat USDG fee, paid over x402 on Robinhood Chain, with $WIF back
+Ask an agent or hire a human for a flat USDG fee on Robinhood Chain, $WIF back
 ```
+
+### Project logo
+`docs/video/logo.png` (square, 1024×1024)
 
 ### Categories (the first one is the main one)
 ```text
@@ -73,7 +76,7 @@ Ten paid calls make you a $WIF holder, and holders pay half on every call after 
 ### Links
 ```text
 Live product: https://flatfee.ultravioletadao.xyz
-Demo video: [VIDEO_URL]
+Demo video: https://youtu.be/oRGfZMNiinI
 Repo: https://github.com/0xultravioleta/worldisflat-x402
 ```
 

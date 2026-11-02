@@ -2,7 +2,7 @@
 
 # Demo video: Flat Fee (60-90 s)
 
-Shot list for the screen recording that matches the app as built. Grok Bot polishes the words, Luis does the voice.
+Shot list for the screen recording that matches the app as built. Grok Bot polishes the words, Saúl does the voice.
 Record 1080p, browser at http://localhost:3000 (or the live URL) on the left, a terminal on the right.
 
 ## Before recording

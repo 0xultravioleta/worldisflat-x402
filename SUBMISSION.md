@@ -1,10 +1,10 @@
 # SUBMISSION: Flat Fee (world is flat hackathon)
 
-- **Submit at:** https://worldisflat.fun/build → sign in → start a team → submission (Luis does every click; nobody else
+- **Submit at:** https://worldisflat.fun/build → sign in → start a team → submission (Saúl does every click; nobody else
   registers, saves or submits).
-- **Submissions close:** Mon 2 Nov 2026, 12:30 PM EST (17:30 UTC), per `worldisflat.fun/build/api/event`. Edits lock then;
-  only the logo can change until the final (Fri 6 Nov 2026, 12:30 PM EST).
-- **The project must stay live and working until Fri 6 Nov 2026, 12:30 PM EST**: judges try it.
+- **Submissions close:** Thu 12 Nov 2026, 17:30 UTC (extended from 2 Nov; round one 12-14 Nov, final 14-16 Nov). Edits lock then;
+  only the logo can change until the final (14-16 Nov 2026).
+- **The project must stay live and working through the final (14-16 Nov 2026)**: judges try it.
 - The form's steps, from the site's own copy: your team → your project → how it connects to $wif → your flywheel →
   proof of build → review. The site shows no character limits publicly; lengths are given so you can trim if a field asks.
 - Replace every `[PLACEHOLDER]` first. Rules that shaped this: the name cannot use Robinhood's name or logo; the project
@@ -15,8 +15,8 @@
 
 ```text
 Team: Ultravioleta DAO
-Lead (prize wallet): Luis ([LUIS_FULL_NAME], @[LUIS_X_HANDLE]), wallet [LUIS_WALLET_PUBLIC_ADDRESS]
-Members: add c0der ([C0DER_NAME]) only if Luis decides. Up to 4 people; each person can be on one team only.
+Lead (prize wallet): Saúl ([SAUL_FULL_NAME], @[SAUL_X_HANDLE]), wallet [SAUL_WALLET_PUBLIC_ADDRESS]
+Members: add c0der ([C0DER_NAME]) only if Saúl decides. Up to 4 people; each person can be on one team only.
 ```
 
 ## 2. Your project
@@ -72,7 +72,7 @@ Ten paid calls make you a $WIF holder, and holders pay half on every call after 
 
 ### Links
 ```text
-Live product: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com
+Live product: https://flatfee.ultravioletadao.xyz
 Demo video: [VIDEO_URL]
 Repo: https://github.com/0xultravioleta/worldisflat-x402
 ```
@@ -101,8 +101,8 @@ Merchant / pay-to (sends the $WIF cashback): 0xb9056196d3D00b4c09ec2E5E123E30b37
 - [ ] The two mainnet transactions are real and open on https://robinhoodchain.blockscout.com.
 - [ ] The live link answers `402` on `POST /api/ask` and the page loads.
 - [x] Repo public since 2026-11-02: https://github.com/0xultravioleta/worldisflat-x402
-- [ ] Terms box read and ticked by Luis; then **submit** (not only save), and screenshot the confirmation.
-- [ ] Optional, after submitting: an update ("dispatch") with the video, and a post from Luis's account.
+- [ ] Terms box read and ticked by Saúl; then **submit** (not only save), and screenshot the confirmation.
+- [ ] Optional, after submitting: an update ("dispatch") with the video, and a post from Saúl's account.
 
 ## Long story (if a long field exists) · Devpost-style
 

@@ -55,11 +55,11 @@ Video: [VIDEO_URL]
 ```
 ### Team
 ```text
-Team (placeholders): Luis ([LUIS_FULL_NAME], @[LUIS_X_HANDLE], lead and submitter) · c0der ([C0DER_NAME], engineering; add as teammate only if Luis decides) · Built with help from AI coding agents.
+Team (placeholders): Saúl ([SAUL_FULL_NAME], @[SAUL_X_HANDLE], lead and submitter) · c0der ([C0DER_NAME], engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
 ```
 ### Form fields
 ```text
-worldisflat.fun/build did not expose a public field list to our fetcher. Paste from this kit: name, pitch, description, repo, demo link, wallet [LUIS_WALLET_PUBLIC_ADDRESS]. If the form is token-gated, stop and tell Luis.
+worldisflat.fun/build did not expose a public field list to our fetcher. Paste from this kit: name, pitch, description, repo, demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]. If the form is token-gated, stop and tell Saúl.
 ```
 
 ## Track selection

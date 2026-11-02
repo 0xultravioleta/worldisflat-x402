@@ -4,7 +4,7 @@ This is the version to record for the submission. It uses only the browser: no t
 Every hash on screen is real and already on Robinhood Chain mainnet. It replaces `DEMO-SCRIPT.md` and
 `kit/video-script.md`, which describe an older terminal shot list.
 
-- **Deadline:** the video URL must be in the form before **Mon 2 Nov 2026, 12:30 PM EST (17:30 UTC)**. Edits lock then.
+- **Deadline:** submissions close **Thu 12 Nov 2026, 17:30 UTC** (extended from 2 Nov). We submit early anyway.
 - **Record:** macOS Cmd+Shift+5 → "Record Entire Screen", microphone on (Options). 1080p is enough. One take is fine.
 - **Before recording:** open the five tabs below in order, zoom the browser to 125% so the text reads on a phone, and
   close anything with keys, `.env`, emails or tokens. Do not connect a wallet.
@@ -14,7 +14,7 @@ Every hash on screen is real and already on Robinhood Chain mainnet. It replaces
 
 ## Tabs
 
-1. Demo: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com
+1. Demo: https://flatfee.ultravioletadao.xyz
 2. Payment tx (0.05 USDG): https://robinhoodchain.blockscout.com/tx/0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33
 3. Cashback tx (10 $WIF): https://robinhoodchain.blockscout.com/tx/0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640
 4. README, flywheel table: https://github.com/0xultravioleta/worldisflat-x402#the-wif-flywheel

@@ -3,7 +3,7 @@
 # Demo video script + shot list: Ask & Hire on Robinhood Chain
 
 - **Limit:** 60–90 s. Target length 2:50 or less.
-- **Record:** 1080p screen capture (OBS), voice-over by Luis in English (Spanish subtitles optional). No copyrighted music; use YouTube Audio Library or silence.
+- **Record:** 1080p screen capture (OBS), voice-over by Saúl in English (Spanish subtitles optional). No copyrighted music; use YouTube Audio Library or silence.
 - **Upload:** YouTube, Public (or Unlisted if the rules allow), title: `Ask & Hire on Robinhood Chain | World Is Flat (Robinhood Chain)`.
 
 | Time | Shot (what's on screen) | Beat | Voice-over |

@@ -8,7 +8,7 @@ Ask & Hire on Robinhood Chain
 Any API becomes a Robinhood Chain storefront.
 
 **Speaker notes:**
-Hi, I'm Luis from Ultravioleta. Any API becomes a Robinhood Chain storefront. This is Ask & Hire on Robinhood Chain, built for World Is Flat (Robinhood Chain).
+Hi, I'm Saúl from Ultravioleta. Any API becomes a Robinhood Chain storefront. This is Ask & Hire on Robinhood Chain, built for World Is Flat (Robinhood Chain).
 
 ## Slide 2: The problem
 **On slide:**
@@ -68,7 +68,7 @@ Concrete next steps with dates if possible.
 
 ## Slide 10: Team and links
 **On slide:**
-Luis, c0der · Ultravioleta DAO
+Saúl, c0der · Ultravioleta DAO
 Repo · Demo · Video
 
 **Speaker notes:**

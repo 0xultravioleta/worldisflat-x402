@@ -1,6 +1,6 @@
 # Social post drafts: World Is Flat (Robinhood Chain)
 
-**Do not post. Luis posts from his own account after submission (or before, where the rules require it).**
+**Do not post. Saúl posts from his own account after submission (or before, where the rules require it).**
 
 ## X post (136/280 counting each link as 23) ✅
 ```text

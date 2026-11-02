@@ -37,7 +37,7 @@ Keeping the demo small enough to ship in a day while still settling real mainnet
 Add Execution Market human tasks priced in USDG, and agent subscriptions.
 
 ## Team
-Ultravioleta DAO: Luis ([LUIS_X_HANDLE]) and c0der.
+Ultravioleta DAO: Saúl ([SAUL_X_HANDLE]) and c0der.
 
 ## License
 MIT (see LICENSE). Must be visible in the GitHub About panel.

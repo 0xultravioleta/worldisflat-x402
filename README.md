@@ -3,7 +3,7 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Paid calls send **$WIF** back (up to a daily budget), and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com ·
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: https://flatfee.ultravioletadao.xyz ·
 Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem
@@ -101,9 +101,9 @@ prints the answer with the settlement link (on mainnet: `CONFIRM_MAINNET_SPEND=0
 recipient).
 
 The live demo is the same server on Robinhood Chain mainnet, with the $WIF cashback on:
-`curl -i -X POST https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'`
+`curl -i -X POST https://flatfee.ultravioletadao.xyz/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'`
 returns the same `402` with the mainnet USDG terms. Paying there spends real USDG: from the page with a wallet, or with
-`npm run buy` and `NETWORK=robinhood`, `PAY_TO=0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`, `FLATFEE_URL=https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com`
+`npm run buy` and `NETWORK=robinhood`, `PAY_TO=0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`, `FLATFEE_URL=https://flatfee.ultravioletadao.xyz`
 and `CONFIRM_MAINNET_SPEND` set to the amount the `402` asks for.
 
 ## Real transactions on Robinhood Chain mainnet
@@ -121,7 +121,7 @@ settlement and paid its gas.
 Wallets: payer `0x6Ce9DA69A46842DCe90e6a14382Ed06eb1c46af5`, merchant / pay-to `0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`.
 The run that produced them: with `NETWORK=robinhood`, `PAY_TO` (the merchant), `WIF_CASHBACK=10`, `MERCHANT_PRIVATE_KEY`
 and `PAYER_PRIVATE_KEY` in `.env`,
-`FLATFEE_URL=https://flatfee.m4qsyfp909142.us-east-2.cs.amazonlightsail.com CONFIRM_MAINNET_SPEND=0.05 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet`.
+`FLATFEE_URL=https://flatfee.ultravioletadao.xyz CONFIRM_MAINNET_SPEND=0.05 CONFIRM_MAINNET_WIF=10 npm run e2e:mainnet`.
 Before it reads the chain or signs, it refuses unless both amounts are given and match the configuration exactly, and it
 refuses to settle USDG without the $WIF leg (`scripts/lib/live.ts`, `test/live.test.ts`). With `FLATFEE_URL` it pays
 that server instead of starting its own, once the server's `/api/info` shows the same network, recipient, USDG, $WIF
@@ -214,7 +214,7 @@ $WIF, an LLM behind the agent, and subscriptions priced in $WIF.
 
 ## Team
 
-Ultravioleta DAO: Luis (`[LUIS_X_HANDLE]`) and c0der. Built with help from AI coding agents.
+Ultravioleta DAO: Saúl (`[SAUL_X_HANDLE]`) and c0der. Built with help from AI coding agents.
 
 ## License
 

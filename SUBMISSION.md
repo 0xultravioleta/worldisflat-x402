@@ -1,5 +1,7 @@
 # SUBMISSION: Flat Fee (world is flat hackathon)
 
+> **SUBMITTED 2 Nov 2026, 16:55 UTC** by Saúl on worldisflat.fun (team UltravioletaDAO, status "submitted"). Edits stay open until 12 Nov 2026, 17:30 UTC via "edit submission". Integration type ticked: *holding $wif unlocks something* + *other*; contract addresses left empty (we deploy none); "ok with wif featuring" ticked.
+
 - **Submit at:** https://worldisflat.fun/build → sign in → start a team → submission (Saúl does every click; nobody else
   registers, saves or submits).
 - **Submissions close:** Thu 12 Nov 2026, 17:30 UTC (extended from 2 Nov; round one 12-14 Nov, final 14-16 Nov). Edits lock then;
@@ -100,11 +102,11 @@ Merchant / pay-to (sends the $WIF cashback): 0xb9056196d3D00b4c09ec2E5E123E30b37
 
 ## 6. Review
 
-- [ ] Every `[PLACEHOLDER]` replaced (search for `[`).
-- [ ] The two mainnet transactions are real and open on https://robinhoodchain.blockscout.com.
-- [ ] The live link answers `402` on `POST /api/ask` and the page loads.
+- [x] Every `[PLACEHOLDER]` replaced (search for `[`).
+- [x] The two mainnet transactions are real and open on https://robinhoodchain.blockscout.com.
+- [x] The live link answers `402` on `POST /api/ask` and the page loads.
 - [x] Repo public since 2026-11-02: https://github.com/0xultravioleta/worldisflat-x402
-- [ ] Terms box read and ticked by Saúl; then **submit** (not only save), and screenshot the confirmation.
+- [x] Terms box read and ticked by Saúl; then **submit** (not only save), and screenshot the confirmation.
 - [ ] Optional, after submitting: an update ("dispatch") with the video, and a post from Saúl's account.
 
 ## Long story (if a long field exists) · Devpost-style

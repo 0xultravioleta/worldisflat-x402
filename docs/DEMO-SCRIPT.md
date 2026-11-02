@@ -1,3 +1,5 @@
+> **Outdated.** Record the submission video from [`docs/VIDEO-SCRIPT.md`](VIDEO-SCRIPT.md).
+
 # Demo video: Flat Fee (60-90 s)
 
 Shot list for the screen recording that matches the app as built. Grok Bot polishes the words, Luis does the voice.

@@ -1,3 +1,5 @@
+> **Outdated.** Record the submission video from [`docs/VIDEO-SCRIPT.md`](../VIDEO-SCRIPT.md).
+
 # Demo video script + shot list: Ask & Hire on Robinhood Chain
 
 - **Limit:** 60–90 s. Target length 2:50 or less.

@@ -83,6 +83,7 @@ test("e2e:mainnet with FLATFEE_URL stops before the chain when that server's /ap
     res.end(JSON.stringify({ localFork: true }));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
     const r = await run("scripts/e2e-live.ts", ["robinhood"], {
       PAYER_PRIVATE_KEY: "0x" + "11".repeat(32),
@@ -90,7 +91,10 @@ test("e2e:mainnet with FLATFEE_URL stops before the chain when that server's /ap
       MERCHANT_PRIVATE_KEY: "0x" + "22".repeat(32),
       CONFIRM_MAINNET_SPEND: "0.10",
       CONFIRM_MAINNET_WIF: "10",
-      FLATFEE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+      FLATFEE_URL: `${base}/`,
+      // the chain is read through the same server, so a run that went on past the refusal would show up in `seen`
+      NETWORK: "robinhood",
+      RPC_URL: `${base}/rpc`,
     });
     assert.equal(r.code, 1, r.out);
     assert.match(r.out, /FLATFEE_URL: .*localFork: false.*refusing/);

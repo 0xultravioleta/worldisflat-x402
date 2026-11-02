@@ -1,5 +1,6 @@
 // `npm run e2e:testnet` / `npm run e2e:mainnet`: one real paid call through the real facilitator, from the
-// PAYER_PRIVATE_KEY wallet to PAY_TO, with the server running in this process. Prints the explorer links.
+// PAYER_PRIVATE_KEY wallet to PAY_TO, to a server running in this process or, with FLATFEE_URL, to that running server.
+// Prints the explorer links.
 //
 // Mainnet spends real money, and its point is the contest's two transactions (a USDG settlement and a $WIF transfer),
 // so with NETWORK=robinhood, PAY_TO, WIF_CASHBACK=10 and MERCHANT_PRIVATE_KEY in .env it refuses to read the chain or
@@ -35,8 +36,8 @@ if (refusal) {
   process.exit(1);
 }
 const remote = process.env.FLATFEE_URL?.trim().replace(/\/+$/, "") || null;
+let info: any = null;
 if (remote) {
-  let info: unknown;
   try {
     info = await (await fetch(`${remote}/api/info`, { signal: AbortSignal.timeout(20_000) })).json();
   } catch (e) {
@@ -64,7 +65,8 @@ const wifOf = (a: string) => (cfg.wif.token ? chain.balanceOf(cfg.wif.token, a) 
 const tier = await chain.tierOf(payer);
 const price = tier === "holder" ? cfg.prices.askHolder : cfg.prices.ask;
 const before = { payer: await usdgOf(payer), payTo: await usdgOf(cfg.payTo), wif: await wifOf(payer) };
-console.log(`${cfg.chain.label} (${cfg.chain.caip2}) via ${cfg.facilitatorUrl}`);
+console.log(`${cfg.chain.label} (${cfg.chain.caip2}) via ${remote ? String(info.facilitator).slice(0, 120) : cfg.facilitatorUrl}`);
+if (remote) console.log(`paying ${remote} (FLATFEE_URL), not a server in this process`);
 console.log(`payer ${payer}: ${formatUnits(before.payer, USDG_DECIMALS)} USDG, tier ${tier}, will pay ${formatUnits(price, USDG_DECIMALS)} USDG to ${cfg.payTo}`);
 
 if (before.payer < price) fail(`fund ${payer} with at least ${formatUnits(price, USDG_DECIMALS)} USDG on ${cfg.chain.label} first`);

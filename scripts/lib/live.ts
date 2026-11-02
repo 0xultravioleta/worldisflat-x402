@@ -42,8 +42,9 @@ export function livePassed(o: LiveOutcome): boolean {
 
 /**
  * Why a live run must not pay a server that is already running (FLATFEE_URL), or null when that server's `/api/info`
- * says it is set up as this run expects: not a local fork, and the same network, recipient, USDG, $WIF, prices and
- * cashback. Such a server sends the cashback with its own merchant key; the run checks on chain that it landed.
+ * says it is set up as this run expects: not a local fork, and the same network, recipient, USDG, $WIF token, holder
+ * minimum, ask prices (the run asks one question) and cashback. Such a server sends the cashback with its own merchant
+ * key; the run checks on chain that it landed.
  */
 export function remoteRefusal(cfg: Config, info: any): string | null {
   if (info?.localFork !== false) return "FLATFEE_URL: its /api/info does not say localFork: false, so it is not a live server: refusing";
@@ -53,6 +54,7 @@ export function remoteRefusal(cfg: Config, info: any): string | null {
     ["pay-to", info.payTo, cfg.payTo],
     ["USDG", info.usdg, cfg.chain.usdg],
     ["$WIF token", info.wif?.token, cfg.wif.token],
+    ["$WIF holder minimum", info.wif?.holderMin, formatUnits(cfg.wif.holderMin, WIF_DECIMALS)],
     ["$WIF cashback", info.wif?.cashback, formatUnits(cfg.wif.cashback, WIF_DECIMALS)],
     ["ask price", info.prices?.ask?.standard, formatUnits(cfg.prices.ask, USDG_DECIMALS)],
     ["holder ask price", info.prices?.ask?.holder, formatUnits(cfg.prices.askHolder, USDG_DECIMALS)],

@@ -120,7 +120,7 @@ A small TypeScript server (Hono) using the public uvd-x402-sdk on both sides, a 
 USDG's on-chain version() reverts, so the EIP-712 domain has to travel in the 402 itself; and pricing the $WIF cashback so it rewards users without being farmable (10 $WIF is about 12% of a call).
 
 ## Accomplishments that we're proud of
-One paid question to our live demo produced a real USDG settlement (https://robinhoodchain.blockscout.com/tx/0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33) and a real $WIF cashback (https://robinhoodchain.blockscout.com/tx/0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640) on Robinhood Chain mainnet, with no custom chain code. The payer held $WIF, so it paid the holder price, 0.05 USDG instead of 0.10, and still got its 10 $WIF back: the flywheel, on chain.
+One paid question to our live demo produced a real USDG settlement (https://robinhoodchain.blockscout.com/tx/0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33) and a real $WIF cashback (https://robinhoodchain.blockscout.com/tx/0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640) on Robinhood Chain mainnet, with no custom chain code. The payer held $WIF (funded by the team), so it paid the holder price, 0.05 USDG instead of 0.10, and still got its 10 $WIF back: the flywheel, on chain.
 
 ## What we learned
 x402 makes any API a Robinhood Chain storefront in a few lines, and a token flywheel fits naturally on top of a stablecoin price.

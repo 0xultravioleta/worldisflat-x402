@@ -61,6 +61,7 @@ test("a live run pays a running server (FLATFEE_URL) only when its /api/info mat
     [{ ...info, payTo: "0x00000000000000000000000000000000000000bb" }, /pay-to/],
     [{ ...info, usdg: "0x7E955252E15c84f5768B83c41a71F9eba181802F" }, /USDG/],
     [{ ...info, wif: { ...info.wif, token: null } }, /\$WIF token/],
+    [{ ...info, wif: { ...info.wif, holderMin: "50" } }, /\$WIF holder minimum/],
     [{ ...info, wif: { ...info.wif, cashback: "0" } }, /\$WIF cashback/],
     [{ ...info, prices: { ...info.prices, ask: { standard: "0.2", holder: "0.05" } } }, /ask price/],
     [{ ...info, prices: { ...info.prices, ask: { standard: "0.1", holder: "0.1" } } }, /holder ask price/],

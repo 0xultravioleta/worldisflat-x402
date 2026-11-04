@@ -8,6 +8,7 @@ import { getAddress, isAddress } from "ethers";
 import { WifTransferUnconfirmed } from "./chain.js";
 import { USDG_DECIMALS, WIF_DECIMALS, formatUnits, type Config, type EmConfig } from "./config.js";
 import { EmHttpError, emId, txHash, type EmApi, type EmApplication, type EmSubmission, type EmTask } from "./em.js";
+import { emPublishRefusal, unpublishableText } from "./emguard.js";
 import type { SignedEscrow } from "./escrow.js";
 import type { EmTaskState, Store, Task } from "./store.js";
 import type { SendWif } from "./wif.js";
@@ -24,6 +25,31 @@ const TERMINAL = new Set<EmTaskState["step"]>(["completed", "expired", "failed"]
 const HUMAN = new Set(["", "human", "human_via_agent"]);
 /** steps whose escrow has not landed yet: each one still needs a bounty from the merchant wallet */
 const UNFUNDED = new Set<EmTaskState["step"]>(["publishing", "published", "assigning"]);
+/** the longest title, in code points, cut from the buyer's request */
+export const TITLE_CODE_POINTS = 80;
+/**
+ * EM's refusals of one task for its own text (a675eb6: services/sell_intent.py, secret_guard.py, content_review.py):
+ * the next buyer's task is not refused for them, so they end that task and do not pause hiring
+ */
+const TEXT_REFUSALS = new Set(["sell_intent_rejected", "embedded_secret_rejected", "task_content_rejected", "task_content_too_large"]);
+/** the fields of a publish that carry the buyer's request: a validation 422 on these alone is about that one task */
+const TEXT_FIELDS = new Set(["title", "instructions"]);
+/** the task's escrow went back to the merchant (EM's escrow states: refunding, refunded) */
+const REFUNDED = new Set(["refunding", "refunded"]);
+
+/**
+ * What Flat Fee does with a publish EM did not take: send it again later (unreachable, busy, or a refusal EM marks
+ * `retryable`), end only this task (a refusal of its text, or a 409 on its own key), or end it and pause hiring (any
+ * other refusal is about this server's settings or identity, and would refuse the next buyer's task too).
+ */
+export function publishRefusal(e: unknown): "retry" | "task" | "pause" {
+  if (!(e instanceof EmHttpError) || e.retryable) return "retry";
+  // EM's typed refusals carry `error` in snake_case and `code` as its UPPER twin: either one names them
+  if (e.code && TEXT_REFUSALS.has(e.code.toLowerCase())) return "task";
+  if (e.status === 409) return "task";
+  if (e.status === 422 && !e.code && e.fields.length && e.fields.every((f) => TEXT_FIELDS.has(f))) return "task";
+  return "pause";
+}
 
 export interface EmHireDeps {
   cfg: Config & { em: EmConfig };
@@ -49,6 +75,8 @@ export interface EmHireDeps {
 export interface EmHire {
   /** why a new hire is refused before its 402 (Execution Market cannot take it, or the merchant cannot fund it); null when it can run */
   unavailable(): string | null;
+  /** why Execution Market would refuse to publish this request (its own rules, on the exact task text), or null */
+  refuses(request: string): string | null;
   /** checks EM's escrow for this network and the merchant's USDG again (each pass does) */
   refresh(): Promise<void>;
   /** publishes a new hire now; a failure is kept on the task and the loop tries again */
@@ -229,13 +257,28 @@ export function createEmHire({
   };
 
   // ------------------------------------------------------------------------------------------------- publish
+  /** the title and instructions a request is published with; the check before the 402 reads the same */
+  function taskText(request: string): { title: string; instructions: string } {
+    const oneLine = request.replace(/\s+/g, " ").trim();
+    const reward = cfg.wif.workerReward > 0n ? ` Flat Fee then sends you ${formatUnits(cfg.wif.workerReward, WIF_DECIMALS)} $WIF on ${cfg.chain.label} on top of the bounty.` : "";
+    return {
+      // cut by code points, so an emoji at the cut is kept whole or left out, never split into a lone surrogate
+      title: `Flat Fee: ${Array.from(oneLine).slice(0, TITLE_CODE_POINTS).join("")}`,
+      instructions: `${request}\n\nDeliver your answer as text (text_response), at most ${MAX_ANSWER_BYTES} bytes. Flat Fee reviews it and approves it, which releases the escrowed bounty to you.${reward}`,
+    };
+  }
+
+  const refuses = (request: string): string | null => {
+    const bad = unpublishableText(request);
+    if (bad) return bad;
+    const { title, instructions } = taskText(request);
+    return emPublishRefusal(title, instructions);
+  };
+
   async function publishNow(t: Task) {
     if (late(t)) return end(t, "failed", "could not publish on Execution Market before the deadline");
-    const oneLine = t.request.replace(/\s+/g, " ").trim();
-    const reward = cfg.wif.workerReward > 0n ? ` Flat Fee then sends you ${formatUnits(cfg.wif.workerReward, WIF_DECIMALS)} $WIF on ${cfg.chain.label} on top of the bounty.` : "";
     const body: Record<string, unknown> = {
-      title: `Flat Fee: ${oneLine.slice(0, 80)}`,
-      instructions: `${t.request}\n\nDeliver your answer as text (text_response), at most ${MAX_ANSWER_BYTES} bytes. Flat Fee reviews it and approves it, which releases the escrowed bounty to you.${reward}`,
+      ...taskText(t.request),
       category: "simple_action",
       bounty_usd: Number(formatUnits(em.bounty, USDG_DECIMALS)),
       deadline_hours: em.deadlineHours,
@@ -253,10 +296,13 @@ export function createEmHire({
       if (store.emPause()) store.setEmPause(null);
       log(`hire ${t.id} published on Execution Market as ${r.id}`);
     } catch (e) {
-      if (!(e instanceof EmHttpError) || e.retryable) return record(t, e);
+      const kind = publishRefusal(e);
+      // nothing was created on EM: the same publish, with the same key, goes out again on the next pass
+      if (kind === "retry") return record(t, e);
       const why = `Execution Market refused the task: ${redact(e)}`;
-      // a refusal that is not about this one task's key would refuse the next buyer's task too: stop taking payments
-      if (e.status !== 409) store.setEmPause({ reason: `hiring is paused since ${why}`, config: settings, at: now().toISOString() });
+      // a refusal of this task's own text or key ends this task only; any other would refuse the next buyer's task
+      // too, so payments stop until a publish goes through again or the EM settings change
+      if (kind === "pause") store.setEmPause({ reason: `hiring is paused since ${why}`, config: settings, at: now().toISOString() });
       return end(t, "failed", why);
     }
   }
@@ -341,7 +387,7 @@ export function createEmHire({
     } catch (err) {
       // unreachable, a timeout, a 5xx, or a 409 (EM's state moved): stay "assigning" with this pick; the next pass reads
       // EM's status, and resends this same authorization if the assignment never landed
-      if (err instanceof EmHttpError && !err.retryable && err.status !== 409) {
+      if (err instanceof EmHttpError && !err.transient && err.status !== 409) {
         const skip = err.serverRetryable !== true;
         save(t, { step: "published", executorId: null, workerWallet: null, ...(skip ? { skipped: [...t.em!.skipped, pick.executorId] } : {}) });
       }
@@ -393,12 +439,30 @@ export function createEmHire({
       save(t, { rejected: [...t.em!.rejected, { submissionId: sid, reason }], lastError: null });
       log(`hire ${t.id}: delivery ${sid} rejected: ${reason}`);
     };
-    // what the manifest already shows is rejected without opening the delivery
+    // Every delivery is opened before Flat Fee decides, a rejection included. EM keeps the escrow of a delivery its
+    // publisher read and then rejected (EM-7, on in production), so the worker can deliver again and still be paid;
+    // one rejected unread is refunded to the merchant by EM's stranded-escrow sweep within minutes, and nobody could
+    // be paid for the next delivery (a675eb6: jobs/stranded_escrow_sweeper.py, api/routers/submissions.py).
+    const opened = await api.openEvidence(sid);
     const problem = manifestProblem(s);
     if (problem) return reject(problem);
-    const answer = answerOf((await api.openEvidence(sid)).evidence);
+    const answer = answerOf(opened.evidence);
     if (!answer) return reject(`No readable text answer of at most ${MAX_ANSWER_BYTES} bytes in the delivery: write the answer as text (text_response).`);
     return approve(t, remote, sid, answer);
+  }
+
+  /**
+   * The escrow of an assigned task went back to the merchant (EM refunded it): nobody can be paid for this task any
+   * more. It is cancelled on EM, so no worker is left delivering into it, and ends here, without asking for more work.
+   */
+  async function onRefunded(t: Task) {
+    try {
+      await api.cancel(t.em!.taskId!, "The escrow went back to the publisher, so this task can no longer be paid.");
+    } catch (e) {
+      if (!(e instanceof EmHttpError) || e.retryable) throw e;
+      log(`hire ${t.id}: Execution Market did not cancel a task whose escrow it refunded (${redact(e)})`);
+    }
+    return end(t, "expired", "the escrow went back to the merchant on Execution Market, so no delivery can be paid; the task was closed there");
   }
 
   async function approve(t: Task, remote: EmTask, sid: string, answer: string | null) {
@@ -505,6 +569,9 @@ export function createEmHire({
     if (!e.taskId) return end(t, "failed", "no task id on Execution Market");
     const remote = await api.getTask(e.taskId);
     save(t, { status: remote.status, deadline: typeof remote.deadline === "string" ? remote.deadline : e.deadline, escrowTx: txHash(remote.escrow_tx) ?? e.escrowTx });
+    // read from the task's escrow row as it is now; the task's own refund_tx is not enough, since a withdraw that
+    // re-opens the task for another worker may leave the earlier refund there while the new escrow is live
+    const refunded = REFUNDED.has(String(remote.escrow_status ?? ""));
     switch (remote.status) {
       case "published":
         return onPublished(t, remote);
@@ -512,10 +579,10 @@ export function createEmHire({
         return save(t, { step: "assigning" });
       case "accepted":
       case "in_progress":
-        return onAssigned(t, remote);
+        return refunded ? onRefunded(t) : onAssigned(t, remote);
       case "submitted":
       case "verifying":
-        return onSubmitted(t, remote);
+        return refunded ? onRefunded(t) : onSubmitted(t, remote);
       case "completed":
         return finish(t, remote, null, txHash(remote.payment_tx));
       case "expired":
@@ -552,6 +619,7 @@ export function createEmHire({
 
   return {
     unavailable,
+    refuses,
     refresh,
     publish: (taskId) => serial(taskId, () => step(taskId)),
     tick,

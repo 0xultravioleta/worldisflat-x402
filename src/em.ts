@@ -16,13 +16,20 @@ export class EmHttpError extends Error {
     readonly serverRetryable: boolean | null = null,
     /** a settlement operation EM points to (`detail.poll`), only ever one of its own paths */
     readonly poll: string | null = null,
+    /** the fields a validation 422 names (`errors[].field`, or FastAPI's `detail[].loc`); "(unknown)" for one it does not */
+    readonly fields: string[] = [],
   ) {
     super(message);
   }
 
-  /** worth sending again later, unchanged: EM was unreachable, busy, or the publisher's identity is still being made */
+  /** the request did not get a verdict: EM was unreachable, busy, or the publisher's identity is still being made */
+  get transient(): boolean {
+    return this.status === 0 || this.status === 408 || this.status === 429 || this.status >= 500 || this.code?.toLowerCase() === "identity_registering";
+  }
+
+  /** worth sending again later, unchanged: a transient failure, or a refusal EM itself marks `retryable: true` */
   get retryable(): boolean {
-    return this.status === 0 || this.status === 408 || this.status === 429 || this.status >= 500 || this.code === "identity_registering";
+    return this.transient || this.serverRetryable === true;
   }
 }
 
@@ -34,6 +41,8 @@ export interface EmTask {
   payment_tx?: string | null;
   executor_id?: string | null;
   escrow_lock_failure?: { code?: string | null; reason?: string | null; retryable?: boolean | null; at?: string | null } | null;
+  /** the status of the task's escrow row (pending_assignment, locked, released, refunding, refunded...) */
+  escrow_status?: string | null;
 }
 
 export interface EmApplication {
@@ -124,7 +133,17 @@ function errorOf(status: number, body: unknown): EmHttpError {
   const message = [typeof detail === "string" ? detail : undefined, d.message, b.message].find((x): x is string => typeof x === "string");
   const serverRetryable = [d.retryable, b.retryable].find((x): x is boolean => typeof x === "boolean") ?? null;
   const poll = [d.poll, b.poll].find((x): x is string => typeof x === "string" && POLL.test(x)) ?? null;
-  return new EmHttpError(status, code, `Execution Market answered ${status}${code ? ` ${code}` : ""}${message ? `: ${message.slice(0, 200)}` : ""}`, serverRetryable, poll);
+  // EM's own 422 handler lists `errors: [{field}]`; FastAPI's default lists `detail: [{loc: ["body", field]}]`
+  const fields: string[] = [];
+  const named = (x: unknown) => (typeof x === "string" && x ? x : "(unknown)");
+  if (Array.isArray(b.errors)) for (const e of b.errors) fields.push(named((e as Record<string, unknown> | null)?.field));
+  if (Array.isArray(detail)) {
+    for (const e of detail as unknown[]) {
+      const loc = (e as { loc?: unknown } | null)?.loc;
+      fields.push(named(Array.isArray(loc) ? loc.filter((p) => p !== "body").join(".") : null));
+    }
+  }
+  return new EmHttpError(status, code, `Execution Market answered ${status}${code ? ` ${code}` : ""}${message ? `: ${message.slice(0, 200)}` : ""}`, serverRetryable, poll, fields);
 }
 
 export function emClient({ apiUrl, wallet, chainId, fetch: fetchFn = globalThis.fetch, timeoutMs = 15_000 }: EmClientOptions): EmApi {

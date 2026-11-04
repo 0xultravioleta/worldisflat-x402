@@ -17,7 +17,8 @@ import { createApp } from "../src/app.js";
 import type { Chain, Tier } from "../src/chain.js";
 import { CHAINS, ConfigError, loadConfig, type Config, type EmConfig } from "../src/config.js";
 import { EmHttpError, emClient, type Fetch } from "../src/em.js";
-import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, manifestProblem } from "../src/emhire.js";
+import { emPublishRefusal } from "../src/emguard.js";
+import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, manifestProblem, publishRefusal } from "../src/emhire.js";
 import { EscrowRefused, checkPaymentAuth, escrowNetwork, escrowPaymentAuth, escrowReadiness, releaseOrder, typedDataSigner, type BuildPreAuth } from "../src/escrow.js";
 import { Store } from "../src/store.js";
 import { budgetedWif } from "../src/wif.js";
@@ -118,6 +119,8 @@ function emDouble() {
     /** approvals refused for want of the payer's release order */
     orderAsks: 0,
     cancels: [] as string[],
+    /** escrows EM's sweep sent back to the merchant */
+    refunds: [] as string[],
     fetches: 0,
   };
   const knobs = {
@@ -144,6 +147,10 @@ function emDouble() {
     approveDown: false,
     /** EM refuses the assignment outright (402 escrow_lock_failed), saying whether that is worth another try */
     assignRefused: null as null | { retryable: boolean },
+    /** EM answers every publish with this refusal, as its routes write it */
+    createRefusal: null as null | { status: number; body: Any },
+    /** EM-7 (EM_REJECT_AFTER_READ_DISPUTE, on in production): the sweep keeps the escrow of a delivery read before its rejection */
+    em7: true,
     /** escrow parameters EM publishes, changed per test */
     network: { chain_id: CHAIN_ID, usdc: USDG, ...{ escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector } } as Any,
   };
@@ -176,6 +183,7 @@ function emDouble() {
     st.creates.push({ body, key });
     if (key && st.byKey.has(key)) return c.json(st.tasks.get(st.byKey.get(key)!), 200);
     if (knobs.refuseCreate) return c.json({ detail: { error: "invalid_payment_token", message: "USDG is not enabled on robinhood-testnet" } }, 422);
+    if (knobs.createRefusal) return c.json(knobs.createRefusal.body, knobs.createRefusal.status as 422);
     const id = randomUUID();
     const task = {
       id,
@@ -189,6 +197,8 @@ function emDouble() {
       payment_tx: null as string | null,
       escrow_lock_failure: null as Any | null,
       executor_id: null as string | null,
+      escrow_status: "pending_assignment" as string,
+      refund_tx: null as string | null,
     };
     st.tasks.set(id, task);
     if (key) st.byKey.set(key, id);
@@ -251,6 +261,7 @@ function emDouble() {
     if (knobs.assignThenFail) {
       t.status = "accepted";
       t.escrow_tx = "0x" + "e5".repeat(32);
+      t.escrow_status = "locked";
       return c.json({ error: "SERVICE_UNAVAILABLE", message: "lost on the way back" }, 503);
     }
     if (knobs.asyncAssign || knobs.lockFails) {
@@ -259,6 +270,7 @@ function emDouble() {
     }
     t.status = "accepted";
     t.escrow_tx = "0x" + "e5".repeat(32);
+    t.escrow_status = "locked";
     return c.json({ success: true, message: "Task assigned successfully", data: { task_id: t.id, executor_id, status: "accepted", worker_wallet: app_.wallet_address } });
   });
   app.get("/api/v1/tasks/:id/submissions", (c) => {
@@ -280,6 +292,8 @@ function emDouble() {
     if (!s || !own(c, s.task_id)) return c.json({ error: "FORBIDDEN", message: "not the publisher" }, 403);
     if (s.agent_verdict) return c.json({ error: "CONFLICT", message: `already ${s.agent_verdict}` }, 409);
     const t = st.tasks.get(s.task_id)!;
+    // an escrow that went back to the merchant pays nobody
+    if (t.escrow_status !== "locked") return c.json({ detail: { code: "ESCROW_NOT_RELEASABLE", message: `the escrow is ${t.escrow_status}` } }, 409);
     if (knobs.approveInFlight) {
       const id = randomUUID();
       st.ops.set(id, { submission: s, task: t, done: false, state: "running" });
@@ -320,7 +334,8 @@ function emDouble() {
   app.post("/api/v1/tasks/:id/cancel", (c) => {
     const t = own(c, c.req.param("id"));
     if (!t) return c.json({ error: "FORBIDDEN", message: "only the publisher" }, 403);
-    if (t.status !== "published") return c.json({ detail: { code: "TASK_NOT_CANCELLABLE" } }, 409);
+    // nothing locked, or nothing left to refund: the cancel only closes the task
+    if (t.status !== "published" && t.escrow_status !== "refunded") return c.json({ detail: { code: "TASK_NOT_CANCELLABLE" } }, 409);
     t.status = "cancelled";
     st.cancels.push(t.id);
     return c.json({ success: true, message: "cancelled" });
@@ -345,6 +360,7 @@ function emDouble() {
     s.status = "accepted";
     t.status = "completed";
     t.payment_tx = "0x" + "f0".repeat(32);
+    t.escrow_status = "released";
   }
   function manifest(evidence: Any | null) {
     if (!evidence) return { items: [], files: [], files_total: 0 };
@@ -405,6 +421,7 @@ function emDouble() {
       if (lands) {
         t.status = "accepted";
         t.escrow_tx = "0x" + "e5".repeat(32);
+        t.escrow_status = "locked";
       } else {
         t.status = "published";
         t.executor_id = null;
@@ -428,6 +445,26 @@ function emDouble() {
     },
     expire(taskId: string) {
       st.tasks.get(taskId)!.status = "expired";
+    },
+    /**
+     * One cycle of EM's stranded-escrow sweep (a675eb6 jobs/stranded_escrow_sweeper.py, every 600 s in production): a
+     * live escrow goes back to the merchant when its task is cancelled or expired, or has a rejected delivery; never
+     * over an accepted delivery not yet paid, a dispute, an agent's `submitted` task, or (EM-7) a delivery of the
+     * assigned worker that the publisher read before rejecting it.
+     */
+    sweep() {
+      for (const t of st.tasks.values()) {
+        if (t.escrow_status !== "locked" || t.status === "disputed" || t.status === "submitted") continue;
+        const subs = st.subs.get(t.id)!;
+        if (subs.some((s) => s.agent_verdict === "accepted" && !t.payment_tx)) continue;
+        const terminal = t.status === "cancelled" || t.status === "expired";
+        const rejected = subs.filter((s) => s.agent_verdict === "rejected");
+        if (!terminal && !rejected.length) continue;
+        if (!terminal && knobs.em7 && rejected.some((s) => st.opened.has(s.id) && s.executor_id === t.executor_id)) continue;
+        t.escrow_status = "refunded";
+        t.refund_tx = "0x" + "be".repeat(32);
+        st.refunds.push(t.id);
+      }
     },
     /** EM's record names another executor than the one Flat Fee signed the escrow for */
     reassign(taskId: string, executorId: string) {
@@ -757,7 +794,7 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   assert.ok(!JSON.stringify(info).includes(merchant.privateKey.slice(2)));
 });
 
-test("a delivery without a usable text answer is rejected with the reason, before it is opened; the next one is approved", async () => {
+test("a delivery without a usable text answer is opened, then rejected with the reason: EM's sweep keeps the escrow, and the next delivery is approved and paid", async () => {
   const s = await setup();
   const r = await buy(s.app, buyer, "Count the chairs at the bus stop");
   const id = r.body.task.id as string;
@@ -770,19 +807,24 @@ test("a delivery without a usable text answer is rejected with the reason, befor
   sent.length = 0;
   const photoOnly = s.em.deliver(emId, { photo: "ipfs://bafy" });
   await s.hire.tick();
+  s.em.sweep();
   const tooLong = s.em.deliver(emId, { text_response: "x".repeat(MAX_ANSWER_BYTES + 1) });
   await s.hire.tick();
+  s.em.sweep();
   const blank = s.em.deliver(emId, { text_response: { type: "text_response", value: "   " } });
   await s.hire.tick();
+  s.em.sweep();
+  // read before each rejection (EM-7), so EM's sweep leaves the escrow locked for the worker's next delivery
   assert.deepEqual(
     s.em.st.rejects.map((x) => [x.submissionId, x.severity, x.opened]),
     [
-      [photoOnly, "minor", false],
-      [tooLong, "minor", false],
-      // the manifest shows a field of some size, so only reading it tells: opened, then rejected
+      [photoOnly, "minor", true],
+      [tooLong, "minor", true],
       [blank, "minor", true],
     ],
   );
+  assert.deepEqual(s.em.st.refunds, []);
+  assert.equal(s.em.st.tasks.get(emId)!.escrow_status, "locked");
   assert.match(s.em.st.rejects[0].notes, /text_response/);
   assert.match(s.em.st.rejects[1].notes, /longer than 2000 bytes/);
   assert.equal(s.em.st.approvals.length, 0);
@@ -801,11 +843,70 @@ test("a delivery without a usable text answer is rejected with the reason, befor
   s.em.knobs.staleReject = false;
   for (const x of s.em.st.subs.get(emId)!) if (x.status === "pending") Object.assign(x, { status: "rejected", agent_verdict: "rejected" });
 
+  s.em.sweep();
   const good = s.em.deliver(emId, { text_response: { type: "text_response", value: "Four chairs." } });
   await s.hire.tick();
   assert.deepEqual(s.em.st.approvals, [good]);
   assert.equal(task(s, id).answer, "Four chairs.");
+  assert.equal(s.em.st.tasks.get(emId)!.escrow_status, "released");
   assert.deepEqual(sent, [{ to: worker.address, amount: 50n * WIF }]);
+});
+
+test("an escrow EM sends back after a rejection (EM-7 off) closes the task on EM: no delivery into it is approved, and no $WIF goes out", async () => {
+  const variants = [
+    { what: "swept", deliversAgain: false, row: null },
+    { what: "swept, and the worker delivered again before Flat Fee's next pass", deliversAgain: true, row: null },
+    // the refund still in flight: EM refuses the cancel, and the task ends anyway
+    { what: "refunding, no refund tx yet", deliversAgain: false, row: { escrow_status: "refunding", refund_tx: null } },
+    { what: "refunding, the worker delivered again", deliversAgain: true, row: { escrow_status: "refunding", refund_tx: null } },
+  ];
+  for (const { what, deliversAgain, row } of variants) {
+    const s = await setup();
+    s.em.knobs.em7 = false;
+    const { id, emId } = await hireWithApplicants(s, 1);
+    await s.hire.tick();
+    s.em.deliver(emId, { photo: "ipfs://not-an-answer" });
+    await s.hire.tick();
+    assert.equal(s.em.st.rejects.length, 1);
+    s.em.sweep();
+    assert.deepEqual(s.em.st.refunds, [emId]);
+    if (row) Object.assign(s.em.st.tasks.get(emId)!, row);
+    // nobody could be paid for a delivery sent now
+    if (deliversAgain) s.em.deliver(emId, { text_response: "Five chairs." });
+    const opened = s.em.st.opened.size;
+    sent.length = 0;
+    await s.hire.tick();
+    const cancelled = !row;
+    assert.deepEqual(s.em.st.cancels, cancelled ? [emId] : [], what);
+    assert.equal(s.em.st.tasks.get(emId)!.status === "cancelled", cancelled, what);
+    assert.equal(s.em.st.approvals.length, 0, what);
+    assert.equal(s.em.st.opened.size, opened, `opened a delivery nobody can be paid for (${what})`);
+    assert.equal(s.em.st.rejects.length, 1, what);
+    const t = task(s, id);
+    assert.equal(t.status, "expired", what);
+    assert.equal(t.em!.step, "expired", what);
+    assert.match(t.em!.lastError!, /escrow went back to the merchant/, what);
+    assert.equal(sent.length, 0, what);
+    // ended: nothing more is asked of EM for it
+    const calls = s.em.st.calls.length;
+    await s.hire.tick();
+    assert.equal(s.em.st.calls.filter((c) => c.path.includes(emId)).length, s.em.st.calls.slice(0, calls).filter((c) => c.path.includes(emId)).length, what);
+  }
+});
+
+test("an earlier refund left on the task does not close it while its current escrow is locked: the delivery is approved and paid", async () => {
+  const s = await setup();
+  const { id, emId, workers } = await hireWithApplicants(s, 1);
+  await s.hire.tick();
+  // a withdraw re-opened the task and EM could not clear the earlier worker's refund from it; this escrow is live
+  s.em.st.tasks.get(emId)!.refund_tx = "0x" + "be".repeat(32);
+  s.em.deliver(emId, { text_response: "Open until six." });
+  sent.length = 0;
+  await s.hire.tick();
+  assert.deepEqual(s.em.st.cancels, []);
+  assert.equal(task(s, id).status, "done");
+  assert.equal(task(s, id).answer, "Open until six.");
+  assert.deepEqual(sent, [{ to: workers[0].wallet, amount: 50n * WIF }]);
 });
 
 test("timeout: nobody is assigned before the deadline, so the task is cancelled on Execution Market and expires, unpaid", async () => {
@@ -867,6 +968,190 @@ test("Execution Market refuses the task at publish: it ends expired with the rea
   const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "x" }) });
   assert.equal(next.status, 503);
   assert.match(((await next.json()) as Any).error, /refused the task/);
+});
+
+// EM's publish refusals as its routes write them (a675eb6: services/publish_errors.py, content_review.py,
+// api/routers/tasks.py and main.py's 422 handler)
+const refusal = (error: string, retryable = false, extra: Any = {}) => ({ detail: { error, code: error.toUpperCase(), message: "refused", retryable, ...extra } });
+const PUBLISH_REFUSALS: { what: string; status: number; body: Any; kind: "retry" | "task" | "pause" }[] = [
+  { what: "the content review timed out", status: 422, body: refusal("task_content_review_unavailable", true), kind: "retry" },
+  { what: "the identity is still being registered", status: 409, body: { detail: { error: "identity_registering", code: "identity_registering", retryable: true, poll: "/api/v1/reputation/register/x" } }, kind: "retry" },
+  { what: "sell intent in the title", status: 422, body: refusal("sell_intent_rejected", false, { field: "title", matched_term: "for sale" }), kind: "task" },
+  { what: "a credential in the text", status: 422, body: refusal("embedded_secret_rejected", false, { secret_type: "aws_access_key_id" }), kind: "task" },
+  { what: "the content review blocked it", status: 422, body: refusal("task_content_rejected"), kind: "task" },
+  { what: "too much text for the review", status: 422, body: refusal("task_content_too_large", false, { limit_bytes: 65536 }), kind: "task" },
+  { what: "a validation 422 on the title", status: 422, body: { detail: "Validation error", errors: [{ field: "title", message: "Input should be a valid string", type: "string_unicode" }] }, kind: "task" },
+  { what: "FastAPI's own 422 on the instructions", status: 422, body: { detail: [{ loc: ["body", "instructions"], msg: "String should have at most 5000 characters", type: "string_too_long" }] }, kind: "task" },
+  { what: "the publish key was spent", status: 409, body: { detail: { code: "idempotency_key_spent", retryable: false, task_id: randomUUID(), status: "cancelled" } }, kind: "task" },
+  { what: "no ERC-8004 identity on Base", status: 403, body: { detail: { error: "identity_required", message: "no ERC-8004 identity on Base", register_endpoint: "/api/v1/reputation/register" } }, kind: "pause" },
+  { what: "the token is not enabled", status: 422, body: refusal("payment_token_not_accepted", false, { field: "payment_token", network: "robinhood-testnet", token: "USDG" }), kind: "pause" },
+  { what: "the network is not recognised", status: 400, body: { detail: "Unsupported payment network: robinhood-testnet" } as Any, kind: "pause" },
+  { what: "the bounty is below EM's minimum", status: 400, body: { detail: "Bounty $0.2 is below minimum $0.5" }, kind: "pause" },
+  { what: "the reputation network", status: 422, body: refusal("invalid_reputation_network"), kind: "pause" },
+  { what: "the deadline is past the escrow's", status: 422, body: refusal("deadline_beyond_escrow_ceiling"), kind: "pause" },
+  { what: "a validation 422 on the deadline", status: 422, body: { detail: "Validation error", errors: [{ field: "deadline_hours", message: "too big", type: "less_than_equal" }] }, kind: "pause" },
+  { what: "a validation 422 on the title and the bounty", status: 422, body: { detail: "Validation error", errors: [{ field: "title", type: "x" }, { field: "bounty_usd", type: "y" }] }, kind: "pause" },
+  { what: "a validation 422 that names no field", status: 422, body: { detail: "Validation error", errors: [{ message: "?" }] }, kind: "pause" },
+  { what: "a validation 422 on the title and on a field it does not name", status: 422, body: { detail: "Validation error", errors: [{ field: "title", type: "x" }, { type: "y" }] }, kind: "pause" },
+  { what: "a refused signature", status: 401, body: { error: "signature_invalid", message: "bad signature" }, kind: "pause" },
+];
+
+test("a publish EM refuses for the task's own text ends that task only; a retryable one is sent again; only a refusal of the settings or identity pauses hiring", async () => {
+  for (const { what, status, body, kind } of PUBLISH_REFUSALS) {
+    const s = await setup();
+    s.em.knobs.createRefusal = { status, body };
+    const r = await buy(s.app, buyer, "Is the cafe on 5th street open today?");
+    assert.equal(r.status, 201, what);
+    const id = r.body.task.id as string;
+    assert.match(task(s, id).em!.lastError!, new RegExp(`answered ${status}`), what);
+    if (kind === "retry") {
+      // nothing was created on EM: the same publish, with the same key, goes out on the next pass; nobody is refused
+      assert.equal(task(s, id).em!.step, "publishing", what);
+      assert.equal(s.hire.unavailable(), null, what);
+      assert.equal(s.store.emPause(), undefined, what);
+      s.em.knobs.createRefusal = null;
+      await s.hire.tick();
+      assert.equal(task(s, id).em!.step, "published", what);
+      assert.equal(new Set(s.em.st.creates.map((c) => c.key)).size, 1, what);
+      continue;
+    }
+    // the paid task ends unpublished, and is not sent again
+    assert.equal(task(s, id).status, "expired", what);
+    assert.equal(task(s, id).em!.step, "failed", what);
+    await s.hire.tick();
+    assert.equal(s.em.st.creates.length, 1, what);
+    s.em.knobs.createRefusal = null;
+    if (kind === "task") {
+      // the next buyer's task is not refused for it
+      assert.equal(s.hire.unavailable(), null, what);
+      assert.equal(s.store.emPause(), undefined, what);
+      const next = await buy(s.app, holder, "Photo of today's menu at the cafe on 5th");
+      assert.equal(next.status, 201, what);
+      assert.equal(next.body.task.em.step, "published", what);
+    } else {
+      assert.match(s.hire.unavailable()!, /refused the task/, what);
+      const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Photo of today's menu" }) });
+      assert.equal(next.status, 503, what);
+    }
+  }
+});
+
+test("publishRefusal: retry what EM did not judge, end the task for its own text or key, pause for anything else", () => {
+  const e = (status: number, code: string | null, retryable: boolean | null = null, fields: string[] = []) => new EmHttpError(status, code, "x", retryable, null, fields);
+  assert.equal(publishRefusal(new Error("boom")), "retry");
+  assert.equal(publishRefusal(e(0, "timeout")), "retry");
+  assert.equal(publishRefusal(e(503, null)), "retry");
+  assert.equal(publishRefusal(e(429, null)), "retry");
+  assert.equal(publishRefusal(e(422, "task_content_review_unavailable", true)), "retry");
+  assert.equal(publishRefusal(e(422, "task_content_review_unavailable", false)), "pause");
+  assert.equal(publishRefusal(e(422, "sell_intent_rejected", false)), "task");
+  // what the client reads first from EM's typed body is `code`, the UPPER twin of `error`
+  assert.equal(publishRefusal(e(422, "SELL_INTENT_REJECTED", false)), "task");
+  assert.equal(publishRefusal(e(409, "IDENTITY_REGISTERING")), "retry");
+  assert.equal(publishRefusal(e(422, "embedded_secret_rejected")), "task");
+  assert.equal(publishRefusal(e(422, "task_content_rejected")), "task");
+  assert.equal(publishRefusal(e(422, "task_content_too_large")), "task");
+  assert.equal(publishRefusal(e(409, "idempotency_key_conflict")), "task");
+  assert.equal(publishRefusal(e(422, null, null, ["title"])), "task");
+  assert.equal(publishRefusal(e(422, null, null, ["title", "instructions"])), "task");
+  assert.equal(publishRefusal(e(422, null, null, [])), "pause");
+  assert.equal(publishRefusal(e(422, null, null, ["title", "deadline_hours"])), "pause");
+  assert.equal(publishRefusal(e(422, null, null, ["(unknown)"])), "pause");
+  // a typed refusal is read by its code, whatever fields come with it
+  assert.equal(publishRefusal(e(422, "payment_token_not_accepted", false, ["title"])), "pause");
+  assert.equal(publishRefusal(e(400, null, null, ["title"])), "pause");
+  assert.equal(publishRefusal(e(403, "identity_required")), "pause");
+  assert.equal(publishRefusal(e(404, null)), "pause");
+  const r = new EmHttpError(422, "task_content_review_unavailable", "x", true);
+  assert.equal(r.retryable, true);
+  assert.equal(r.transient, false);
+});
+
+/** what /api/hire answers to `request` before anyone pays: the status and the error */
+async function beforePayment(app: Setup["app"], request: string) {
+  const r = await call(app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request }) });
+  return { status: r.status, error: r.status === 400 ? (((await r.json()) as Any).error as string) : null, required: r.headers.get("payment-required") };
+}
+
+const ch = (...codes: number[]) => String.fromCodePoint(...codes);
+const AWS_KEY_ID = "AK" + "IA" + "Q7".repeat(8); // put together here, so no scanner reads a key in this file
+
+test("a request Execution Market's own rules would refuse is refused with a 400 before the 402, and only through Execution Market", async () => {
+  const refused: [string, RegExp][] = [
+    // not text: EM's validator refuses a lone surrogate, and its database a NUL
+    ["Is the bike " + ch(0xd83d) + " still there?", /not valid Unicode/],
+    ["Is the bike " + ch(0xde72) + " still there?", /not valid Unicode/],
+    ["Read the sign" + ch(0) + " on the door", /NUL/],
+    // sell_intent.py on the title, with Python's whitespace and case folds
+    ["Is the blue bike for sale at the shop on 5th street still there?", /not sale listings.*for sale/],
+    ["Check if the house is FOR   SALE", /not sale listings/],
+    ["We sell bikes: count the ones outside", /not sale listings/],
+    ["selling our sofa, take a photo", /not sale listings/],
+    ["for" + ch(0x1c) + "sale sign on 5th?", /not sale listings/],
+    ["for" + ch(0x85) + "sale sign on 5th?", /not sale listings/],
+    ["for" + ch(0xa0) + "sale sign on 5th?", /not sale listings/],
+    [ch(0x17f) + "elling my bike, is the price right?", /not sale listings/],
+    ["SELL" + ch(0x131) + "NG MY car: photo of the ad", /not sale listings/],
+    ["SELL" + ch(0x130) + "NG OUR car: photo of the ad", /not sale listings/],
+    ["Is it for sale?", /not sale listings/],
+    // secret_guard.py on the title and the instructions, never repeating what matched
+    ["Download https://b.s3.amazonaws.com/f?X-Amz-Signature=abc and read it", /pre-signed URL \(aws_presigned_url\)/],
+    ["Open https://b.example/f?AWSAccess" + ch(0x212a) + "eyId=abc", /aws_presigned_url/],
+    ["Open https://b.example/f?a=1&x-amz-security-token=abc", /aws_session_token/],
+    [`The key is ${AWS_KEY_ID}, check it`, /aws_access_key_id/],
+    ["Open https://storage.example/o?GoogleAccessId=svc", /gcp_signed_url/],
+    ["Open https://a.blob.example/c?sv=2020-08-04&sr=b&sig=abc", /azure_sas_token/],
+    ["Read: -----BEGIN " + "RSA PRIVATE" + " KEY----- and tell me", /private_key_pem/],
+    // past the title's cut: in the instructions only, which secret_guard.py reads too
+    ["x".repeat(90) + ` ${AWS_KEY_ID}`, /aws_access_key_id/],
+  ];
+  const allowed = [
+    "Photo of the wholesale market on 5th",
+    "Ask the salesperson whether it is for sales staff only",
+    "Is the store selling mystery novels?",
+    "Does the shop sell bikes?",
+    "Vendo sign on the door: is it still there?", // start-anchored in EM's rule, and the title starts with "Flat Fee: "
+    "x".repeat(85) + " is it for sale?", // past the title's cut: sell intent is read on the title only
+    "The code is akiaq7q7q7q7q7q7q7q7, is it still valid?", // EM's key pattern is case-sensitive
+    `Is order ref${AWS_KEY_ID} ready?`, // no word boundary before the key, so EM's pattern does not match
+    "Ask at the Platfor sale desk", // nor before "for sale"
+    "Open https://a.example/c?sig=abc and read it",
+    "café" + " near the station, open now?",
+  ];
+  const on = await setup();
+  for (const [request, why] of refused) {
+    const r = await beforePayment(on.app, request);
+    assert.equal(r.status, 400, JSON.stringify(request));
+    assert.match(r.error!, why, JSON.stringify(request));
+    assert.equal(r.required, null);
+    assert.ok(!r.error!.includes(AWS_KEY_ID), "the error repeats the credential");
+  }
+  for (const request of allowed) assert.equal((await beforePayment(on.app, request)).status, 402, JSON.stringify(request));
+  assert.equal(on.em.st.creates.length, 0);
+  // what is allowed is published as is: EM's rules do not fire on the text Flat Fee adds
+  assert.equal((await buy(on.app, buyer, allowed[0])).status, 201);
+  assert.equal(on.em.st.creates.length, 1);
+  assert.equal(emPublishRefusal(on.em.st.creates[0].body.title, on.em.st.creates[0].body.instructions), null);
+  // asking the agent is not affected
+  assert.equal((await call(on.app, "/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "Is it for sale?" }) })).status, 402);
+
+  // the board, with the knob off, takes every one of them as before
+  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-em-off-"));
+  dirs.push(dir);
+  const off = createApp({ cfg: loadConfig(baseEnv(dir, { WORKER_TOKEN: "secret" })), chain, store: new Store(dir), log: () => {}, cashbackWaitMs: 2000 });
+  for (const [request] of refused) assert.equal((await beforePayment(off, request)).status, 402, JSON.stringify(request));
+});
+
+test("the title is cut at 80 code points: an emoji at the cut is kept whole or left out, never split", async () => {
+  const bike = ch(0x1f6b2);
+  for (const [lead, kept] of [[79, true], [80, false]] as const) {
+    const s = await setup();
+    assert.equal((await buy(s.app, buyer, "x".repeat(lead) + bike + " is it still there?")).status, 201);
+    const title = s.em.st.creates[0].body.title as string;
+    assert.ok((title as string & { isWellFormed(): boolean }).isWellFormed(), "a lone surrogate went to EM");
+    assert.equal(title, "Flat Fee: " + "x".repeat(lead) + (kept ? bike : ""));
+    assert.equal(Array.from(title).length, "Flat Fee: ".length + 80);
+  }
 });
 
 test("a queued lock and a queued approval are followed to the end, and the escrow is approved once", async () => {
@@ -1391,6 +1676,14 @@ test("checkPaymentAuth passes the lock of the bounty for the worker, and refuses
     ["to the worker", await resign((x) => (x.payload.authorization.to = worker))],
     ["another receiver", await resign((x) => (x.payload.paymentInfo.receiver = other.address))],
     ["another max", await resign((x) => (x.payload.paymentInfo.maxAmount = "999999"))],
+    // the same, with a nonce that commits to it: only the amount check stands in the way
+    [
+      "another max, its nonce recomputed",
+      await resign((x) => {
+        x.payload.paymentInfo.maxAmount = "999999";
+        x.payload.authorization.nonce = computeEscrowNonce(CHAIN_ID, CONTRACTS.escrow, ESCROW_PAYMENT_INFO_TYPEHASH, x.payload.paymentInfo);
+      }),
+    ],
     ["another token", await resign((x) => (x.payload.paymentInfo.token = MAINNET_USDG))],
     ["another operator", await resign((x) => (x.payload.paymentInfo.operator = other.address))],
     ["another salt", await resign((x) => (x.payload.paymentInfo.salt = hexlify(randomBytes(32))))],
@@ -1399,6 +1692,7 @@ test("checkPaymentAuth passes the lock of the bounty for the worker, and refuses
     ["no signature", JSON.stringify({ ...w, payload: { ...w.payload, signature: undefined } })],
   ];
   for (const [what, raw] of bad) assert.throws(() => checkPaymentAuth(emCfg, merchant.address, worker, raw), EscrowRefused, what);
+  assert.throws(() => checkPaymentAuth(emCfg, merchant.address, worker, bad.find(([w]) => w === "another max, its nonce recomputed")![1]), /another amount than the bounty/);
   // a builder that returns anything else is refused before the authorization leaves Flat Fee
   const evil: BuildPreAuth = async (signer, p) => (await testBuild(signer, { ...p, workerWallet: other.address }));
   await assert.rejects(escrowPaymentAuth({ cfg: emCfg, wallet: merchant, build: evil }, paymentConfig(), worker, deadline), EscrowRefused);

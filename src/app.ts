@@ -208,6 +208,9 @@ export function createApp({
       const input = validate(body);
       if (!input) return c.json({ error: `send JSON with a non-empty "${route === "ask" ? "question" : "request"}" of at most ${MAX_TEXT} characters` }, 400);
       if (route === "hire" && !emHire && !cfg.workerToken) return c.json({ error: "hiring is off on this server: no WORKER_TOKEN, so nobody could take the task" }, 503);
+      // through Execution Market, a request EM's own rules would refuse to publish is refused here, before anyone pays
+      const unpublishable = route === "hire" ? (emHire?.refuses(input) ?? null) : null;
+      if (unpublishable) return c.json({ error: unpublishable }, 400);
       // through Execution Market, a hire that could not be published or funded is refused before anyone pays for it
       const paused = route === "hire" ? (emHire?.unavailable() ?? null) : null;
       if (paused) return c.json({ error: `hiring is paused: ${paused}`, retryable: true }, 503);

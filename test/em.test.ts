@@ -115,6 +115,8 @@ function emDouble() {
     approvals: [] as string[],
     /** the payer's release orders that came with approvals, verified */
     orders: [] as Any[],
+    /** approvals refused for want of the payer's release order */
+    orderAsks: 0,
     cancels: [] as string[],
     fetches: 0,
   };
@@ -138,6 +140,8 @@ function emDouble() {
     approveInFlight: false,
     /** EM answers its payment config with a 403 */
     configForbidden: false,
+    /** approvals answer 503 */
+    approveDown: false,
     /** EM refuses the assignment outright (402 escrow_lock_failed), saying whether that is worth another try */
     assignRefused: null as null | { retryable: boolean },
     /** escrow parameters EM publishes, changed per test */
@@ -281,7 +285,7 @@ function emDouble() {
       st.ops.set(id, { submission: s, task: t, done: false, state: "running" });
       return c.json({ detail: { code: "SETTLEMENT_OPERATION_IN_FLIGHT", message: "an approval runs", poll: `/api/v1/settlement-operations/${id}` } }, 409);
     }
-    st.approvals.push(s.id);
+    if (knobs.approveDown) return c.json({ error: "SERVICE_UNAVAILABLE", message: "try again" }, 503);
     // the payer's release order, when it comes: it must be the payer's signature over the escrow's own paymentInfo
     const { lifecycle_order: order } = await c.req.json();
     if (order) {
@@ -290,8 +294,10 @@ function emDouble() {
       if (order.action !== "release" || getAddress(signer) !== t.payer || getAddress(order.signer) !== t.payer) return c.json({ detail: { code: "LIFECYCLE_ORDER_INVALID" } }, 400);
       st.orders.push(order);
     } else if (knobs.requireOrder) {
-      return c.json({ detail: { code: "LIFECYCLE_ORDER_REQUIRED", retryable: true, message: "the payer must sign the release" } }, 502);
+      st.orderAsks++;
+      return c.json({ detail: { code: "LIFECYCLE_ORDER_REQUIRED", retryable: true, message: "the payer must sign the release" } }, 409);
     }
+    st.approvals.push(s.id);
     if (knobs.asyncApprove) {
       const id = randomUUID();
       st.ops.set(id, { submission: s, task: t, done: false, state: "queued" });
@@ -369,7 +375,7 @@ function emDouble() {
     knobs,
     fetch,
     /** a worker applies (EM's ranking fields included) */
-    apply(taskId: string, a: { wallet: string; score?: number; review?: Any | null; executorId?: string; status?: string; type?: string }) {
+    apply(taskId: string, a: { wallet: string; score?: number; review?: Any | null; executorId?: string; status?: string; type?: string | null; kind?: string }) {
       const row = {
         id: randomUUID(),
         task_id: taskId,
@@ -379,7 +385,8 @@ function emDouble() {
         wallet_address: a.wallet,
         effective_reputation_score: a.score ?? 0,
         review: a.review ?? null,
-        executor_type: a.type ?? "human",
+        executor_type: a.type === undefined ? "human" : a.type,
+        executor_kind: a.kind ?? null,
       };
       st.apps.get(taskId)!.push(row);
       return row.executor_id;
@@ -401,7 +408,7 @@ function emDouble() {
       } else {
         t.status = "published";
         t.executor_id = null;
-        t.escrow_lock_failure = { code: "LOCK_REVERTED", reason: "the token refused the authorization", retryable: knobs.lockFailRetryable };
+        t.escrow_lock_failure = { code: "LOCK_REVERTED", reason: "the token refused the authorization", retryable: knobs.lockFailRetryable, at: new Date(clock()).toISOString() };
       }
     },
     /** queued approvals finish */
@@ -502,6 +509,7 @@ function baseEnv(dir: string, env: Record<string, string>) {
 }
 
 interface Setup {
+  dir: string;
   cfg: Config & { em: EmConfig };
   store: Store;
   em: ReturnType<typeof emDouble>;
@@ -516,9 +524,9 @@ let merchantUsdg = 10n ** 9n;
 /** the app with Execution Market switched on, after the first check of EM (as `start()` does at boot) */
 async function setup(
   env: Record<string, string> = {},
-  opts: { build?: BuildPreAuth; readyBuild?: BuildPreAuth; timeoutMs?: number; publishWaitMs?: number; check?: boolean } = {},
+  opts: { build?: BuildPreAuth; readyBuild?: BuildPreAuth; timeoutMs?: number; publishWaitMs?: number; check?: boolean; dir?: string } = {},
 ): Promise<Setup> {
-  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-em-"));
+  const dir = opts.dir ?? mkdtempSync(path.join(tmpdir(), "flatfee-em-"));
   dirs.push(dir);
   const loaded = loadConfig(baseEnv(dir, { ...EM_ENV, ...env }));
   const cfg = { ...loaded, em: loaded.em! };
@@ -543,7 +551,7 @@ async function setup(
   });
   const app = createApp({ cfg, chain, store, emHire: hire, log: (m) => logs.push(m), now, publishWaitMs: opts.publishWaitMs ?? 5000, cashbackWaitMs: 2000 });
   if (opts.check !== false) await hire.tick();
-  return { cfg, store, em, hire, app, logs };
+  return { dir, cfg, store, em, hire, app, logs };
 }
 
 const call = (app: { fetch: (r: Request) => Response | Promise<Response> }, p: string, init: RequestInit = {}) => Promise.resolve(app.fetch(new Request(`http://flatfee.test${p}`, init)));
@@ -688,6 +696,7 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, review: { level: "blocked" } });
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, status: "rejected" });
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, type: "agent" });
+  s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, type: null, kind: "autonomous_agent" });
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 10 });
   const chosen = s.em.apply(emId, { wallet: good.address, score: 80 });
   await s.hire.tick();
@@ -712,8 +721,11 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   await s.hire.tick();
   assert.deepEqual(s.em.st.approvals, [sid]);
   assert.ok(s.em.st.opened.has(sid));
+  // the order went along once EM asked for it, over the escrow that locked
+  assert.equal(s.em.st.orderAsks, 1);
   assert.equal(s.em.st.orders.length, 1);
   assert.equal(getAddress(s.em.st.orders[0].signer), merchant.address);
+  assert.equal(task(s, id).em!.approvals, 0, "asking for the order counted as a refused release");
   t = task(s, id);
   assert.equal(t.status, "done");
   assert.equal(t.answer, "Open until 9pm, the menu is on the door.");
@@ -1100,7 +1112,7 @@ test("EM pays a delivery Flat Fee rejected (arbitration, or its own release): th
   assert.equal(sent.length, 0);
 });
 
-test("EM names another executor than the one the escrow was signed for: the work is approved, but no $WIF goes out", async () => {
+test("EM names another executor than the one the escrow was signed for: the delivery is not approved, and no $WIF goes out", async () => {
   const s = await setup();
   const { id, emId, workers } = await hireWithApplicants(s, 2);
   await s.hire.tick();
@@ -1108,12 +1120,86 @@ test("EM names another executor than the one the escrow was signed for: the work
   s.em.reassign(emId, workers[1].executorId);
   await s.hire.tick();
   assert.match(task(s, id).em!.lastError!, /signed no escrow for/);
-  s.em.deliver(emId, { text_response: "Noon." });
+  const sid = s.em.deliver(emId, { text_response: "Noon." });
   sent.length = 0;
+  await s.hire.tick();
+  // the escrow pays whom Flat Fee signed it for, so a delivery from someone else is not approved
+  assert.equal(s.em.st.approvals.length, 0);
+  assert.notEqual(task(s, id).status, "done");
+  // if EM releases it anyway, the task ends without $WIF
+  s.em.autoRelease(emId, sid);
   await s.hire.tick();
   assert.equal(task(s, id).status, "done");
   assert.match(task(s, id).rewardError!, /signed no escrow for/);
   assert.equal(sent.length, 0);
+});
+
+test("after an assignment that kept failing for over an hour, the release order covers the escrow that locked", async () => {
+  const s = await setup();
+  s.em.knobs.requireOrder = true;
+  const { id, emId, workers } = await hireWithApplicants(s, 1);
+  s.em.knobs.dropAssign = true;
+  await s.hire.tick();
+  clockMs += 3600 * 1000 + 1000; // the first authorization can no longer be used
+  await s.hire.tick();
+  s.em.knobs.dropAssign = false;
+  await s.hire.tick();
+  assert.equal(task(s, id).em!.signed.length, 2);
+  assert.equal(s.em.st.assigns.length, 1);
+  assert.equal(s.em.st.assigns[0].auth.payload.paymentInfo.salt, task(s, id).em!.signed[1].paymentInfo.salt);
+  s.em.deliver(emId, { text_response: "Done." });
+  sent.length = 0;
+  await s.hire.tick();
+  // the double checks the order against the paymentInfo that locked: it went through
+  assert.equal(s.em.st.orders.length, 1);
+  assert.equal(task(s, id).status, "done");
+  assert.deepEqual(sent, [{ to: workers[0].wallet, amount: 50n * WIF }]);
+});
+
+test("EM down at approval time does not use up the approvals: it approves once EM is back", async () => {
+  const s = await setup();
+  const { id, emId } = await hireWithApplicants(s, 1);
+  await s.hire.tick();
+  s.em.deliver(emId, { text_response: "Yes." });
+  s.em.knobs.approveDown = true;
+  for (let i = 0; i < MAX_APPROVALS + 2; i++) await s.hire.tick();
+  assert.equal(task(s, id).em!.approvals, 0);
+  s.em.knobs.approveDown = false;
+  await s.hire.tick();
+  assert.equal(task(s, id).status, "done");
+});
+
+test("an older lock failure is not blamed on the next applicant whose assignment never reached EM", async () => {
+  const s = await setup();
+  const { id, emId, workers } = await hireWithApplicants(s, 2);
+  s.em.knobs.lockFails = true;
+  await s.hire.tick();
+  s.em.lock(emId, false); // A's lock fails, recorded with its time
+  s.em.knobs.lockFails = false;
+  await s.hire.tick();
+  clockMs += 3600 * 1000 + 1000;
+  s.em.knobs.dropAssign = true; // B's assignment never arrives; A's failure is still on the task
+  await s.hire.tick();
+  await s.hire.tick();
+  assert.deepEqual(task(s, id).em!.skipped, [workers[0].executorId]);
+  s.em.knobs.dropAssign = false;
+  await s.hire.tick();
+  assert.equal(s.em.st.assigns.at(-1)!.executorId, workers[1].executorId);
+  assert.equal(task(s, id).em!.step, "assigned");
+});
+
+test("a refused publish keeps hiring paused across a restart, until the Execution Market settings change", async () => {
+  const s = await setup();
+  s.em.knobs.refuseCreate = true;
+  await buy(s.app, buyer, "Find a plumber");
+  assert.match(s.hire.unavailable()!, /refused the task/);
+  // the same settings after a restart: still paused
+  const again = await setup({}, { dir: s.dir });
+  assert.match(again.hire.unavailable()!, /refused the task/);
+  // the operator changed something on this side: hiring resumes
+  const changed = await setup({ EM_BOUNTY_USDG: "0.15" }, { dir: s.dir });
+  assert.equal(changed.hire.unavailable(), null);
+  assert.equal(changed.store.emPause(), undefined);
 });
 
 test("approvals are capped: a release that keeps failing waits for a person, and one already running is followed, not repeated", async () => {
@@ -1240,6 +1326,16 @@ const paymentConfig = (network: Any = {}) => ({
     tier_timings: { micro: { pre: 3600, auth: 7200, refund: 86400 } },
     networks: { "robinhood-testnet": { chain_id: CHAIN_ID, usdc: USDG, escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector, ...network } },
   },
+});
+
+test("the readiness dry run checks what the builder built, as an assignment would", async () => {
+  assert.equal(await escrowReadiness(emCfg, paymentConfig(), testBuild), null);
+  const otherNetwork: BuildPreAuth = async (signer, p) => {
+    const w = JSON.parse(await testBuild(signer, p));
+    return JSON.stringify({ ...w, paymentRequirements: { ...w.paymentRequirements, network: "eip155:4663" } });
+  };
+  assert.match((await escrowReadiness(emCfg, paymentConfig(), otherNetwork))!, /cannot build an escrow.*another network/);
+  assert.match((await escrowReadiness(emCfg, paymentConfig(), buildEscrowPreAuth))!, /cannot build an escrow on robinhood-testnet/);
 });
 
 test("escrowNetwork takes EM's parameters only when they are Flat Fee's own, any address case", () => {

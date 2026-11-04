@@ -72,7 +72,7 @@ export interface EmOperation {
   done: boolean;
   /** queued, running, succeeded, failed, unresolved */
   state: string;
-  response?: { data?: { payment_tx?: string | null } } | null;
+  response?: { data?: { payment_tx?: string | null } } & Record<string, unknown> | null;
 }
 
 export interface EmApi {

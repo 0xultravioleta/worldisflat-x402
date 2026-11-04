@@ -46,8 +46,12 @@ export interface EmTaskState {
   signed: { executorId: string; wallet: string; validBefore: number; paymentInfo: Record<string, unknown>; auth: string }[];
   /** the delivery that passed Flat Fee's review and was approved (or is being approved) */
   accepted: string | null;
-  /** approvals sent; capped, so a release that keeps failing waits for a person */
+  /** releases EM refused; capped, so a release that keeps failing waits for a person */
   approvals: number;
+  /** EM asked for the payer's release order (LIFECYCLE_ORDER_REQUIRED): every approval of this task carries one */
+  needsOrder: boolean;
+  /** when the last assignment was sent, to tell a lock failure of that attempt from an older one */
+  assignedAt: string | null;
   /** deliveries Flat Fee rejected, with the reason it gave */
   rejected: { submissionId: string; reason: string }[];
   /** an approval EM queued (202): its settlement operation, followed until done */
@@ -80,6 +84,15 @@ interface State {
   tasks: Task[];
   /** $WIF (atomic, as a string) reserved for transfers on `day` (UTC, YYYY-MM-DD); kept here so a restart does not refill it */
   wifBudget?: { day: string; spent: string };
+  /** hiring through Execution Market paused after EM refused a publish outright, for the EM settings of `config` */
+  emPause?: EmPause;
+}
+
+export interface EmPause {
+  reason: string;
+  /** the EM settings in force when it was recorded: other settings lift it */
+  config: string;
+  at: string;
 }
 
 export class Store {
@@ -106,7 +119,9 @@ export class Store {
     if (b !== undefined && (typeof b?.day !== "string" || typeof b?.spent !== "string" || !/^\d+$/.test(b.spent))) {
       throw new Error(`${file} has an unreadable wifBudget; move it away or run npm run reset`);
     }
-    return { ledger: s.ledger, tasks: s.tasks, ...(b ? { wifBudget: b } : {}) };
+    const p = s.emPause;
+    const pause = p && typeof p.reason === "string" && typeof p.config === "string" && typeof p.at === "string" ? { emPause: p } : {};
+    return { ledger: s.ledger, tasks: s.tasks, ...(b ? { wifBudget: b } : {}), ...pause };
   }
 
   private save() {
@@ -191,6 +206,16 @@ export class Store {
     Object.assign(t, patch);
     this.save();
     return t;
+  }
+
+  emPause(): EmPause | undefined {
+    return this.state.emPause;
+  }
+
+  setEmPause(pause: EmPause | null) {
+    if (pause) this.state.emPause = pause;
+    else delete this.state.emPause;
+    this.save();
   }
 
   reset() {

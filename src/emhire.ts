@@ -20,6 +20,8 @@ const WRAPPER_BYTES = 256;
 export const MAX_APPROVALS = 3;
 
 const TERMINAL = new Set<EmTaskState["step"]>(["completed", "expired", "failed"]);
+/** the executor kinds Flat Fee hires: a person, directly or through an agent (EM's `human_via_agent`); none given counts as a person */
+const HUMAN = new Set(["", "human", "human_via_agent"]);
 /** steps whose escrow has not landed yet: each one still needs a bounty from the merchant wallet */
 const UNFUNDED = new Set<EmTaskState["step"]>(["publishing", "published", "assigning"]);
 
@@ -71,6 +73,8 @@ export function newEmState(at: Date): EmTaskState {
     signed: [],
     accepted: null,
     approvals: 0,
+    needsOrder: false,
+    assignedAt: null,
     rejected: [],
     approval: null,
     paymentTx: null,
@@ -178,8 +182,13 @@ export function createEmHire({
   // paid then is published by the loop once EM answers again); a refusal from EM does not.
   let configProblem: string | null = "Execution Market has not been checked yet";
   let balance: bigint | null = null;
-  /** EM refused the last publish outright: hiring stays paused until a publish goes through again */
-  let publishRefused: string | null = null;
+  // EM refused a publish outright: hiring stays paused, across restarts (state.json), until a publish goes through
+  // again or the EM settings change (the operator fixed something on this side)
+  const settings = JSON.stringify({ api: em.apiUrl, network: cfg.chain.name, bounty: em.bounty.toString(), token: em.paymentToken, escrow: em.escrow, deadline: em.deadlineHours });
+  const publishRefused = (): string | null => {
+    const p = store.emPause();
+    return p && p.config === settings ? p.reason : null;
+  };
 
   const refresh = async () => {
     let why: string | null;
@@ -197,13 +206,19 @@ export function createEmHire({
     } catch (e) {
       log(`merchant USDG read failed: ${redact(e)}`);
     }
+    const pause = store.emPause();
+    if (pause && pause.config !== settings) {
+      log("hiring resumes: the Execution Market settings changed since EM refused a task");
+      store.setEmPause(null);
+    }
     if (why !== configProblem) log(why ? `hiring paused: ${why}` : "Execution Market can take hires on this network");
     configProblem = why;
   };
 
   const unavailable = (): string | null => {
     if (configProblem) return configProblem;
-    if (publishRefused) return publishRefused;
+    const refused = publishRefused();
+    if (refused) return refused;
     // every hire whose escrow has not landed yet still needs a bounty from the merchant, and so does the next one
     const unfunded = store.tasks().filter((t) => t.via === "em" && t.em && UNFUNDED.has(t.em.step)).length;
     const needed = em.bounty * BigInt(unfunded + 1);
@@ -235,13 +250,13 @@ export function createEmHire({
       // one key per hire, kept with it: a publish sent again (a timeout, a restart) never makes a second task on EM
       const r = await api.createTask(body, t.em!.key);
       save(t, { step: "published", taskId: r.id, status: r.status ?? null, deadline: typeof r.deadline === "string" ? r.deadline : null, lastError: null });
-      publishRefused = null;
+      if (store.emPause()) store.setEmPause(null);
       log(`hire ${t.id} published on Execution Market as ${r.id}`);
     } catch (e) {
       if (!(e instanceof EmHttpError) || e.retryable) return record(t, e);
       const why = `Execution Market refused the task: ${redact(e)}`;
       // a refusal that is not about this one task's key would refuse the next buyer's task too: stop taking payments
-      if (e.status !== 409) publishRefused = `hiring is paused since ${why}`;
+      if (e.status !== 409) store.setEmPause({ reason: `hiring is paused since ${why}`, config: settings, at: now().toISOString() });
       return end(t, "failed", why);
     }
   }
@@ -254,8 +269,8 @@ export function createEmHire({
       if (typeof a.wallet_address !== "string" || !isAddress(a.wallet_address)) return false;
       if (sameAddress(a.wallet_address, t.payer) || sameAddress(a.wallet_address, merchant)) return false;
       if (a.review || a.recommended === false) return false;
-      // Flat Fee sells a human's time: an applicant that applied as an agent or a robot is not taken
-      if (["agent", "robot"].includes(String(a.executor_type ?? "")) || ["agent", "robot"].includes(String(a.executor_kind ?? ""))) return false;
+      // Flat Fee sells a human's time: only an applicant that applied as a human (directly or through an agent) is taken
+      if (!HUMAN.has(String(a.executor_type ?? "")) || !HUMAN.has(String(a.executor_kind ?? ""))) return false;
       return !t.em!.skipped.includes(a.executor_id.toLowerCase());
     });
     ok.sort(
@@ -277,8 +292,11 @@ export function createEmHire({
   async function onPublished(t: Task, remote: EmTask) {
     const e = t.em!;
     if (e.step === "assigning" && e.executorId) {
+      // a failure recorded before this assignment was sent is an older attempt's, not this applicant's
       const f = remote.escrow_lock_failure;
-      if (f) {
+      const fAt = Date.parse(f?.at ?? "");
+      const sentAt = Date.parse(e.assignedAt ?? "");
+      if (f && !(Number.isFinite(fAt) && Number.isFinite(sentAt) && fAt < sentAt)) {
         // EM tried to lock and put the task back. That applicant is not tried again, unless EM says the failure was
         // not theirs (then the same authorization is sent again).
         const why = redact(String(f.reason ?? f.code ?? "the escrow lock did not land")).slice(0, 200);
@@ -316,7 +334,7 @@ export function createEmHire({
       save(t, { signed: [...t.em!.signed, signed] });
     }
     // written down before EM is asked, so the next pass knows whom this pass assigned whatever happens to the call
-    save(t, { step: "assigning", executorId: pick.executorId, workerWallet: pick.wallet, lastError: null });
+    save(t, { step: "assigning", executorId: pick.executorId, workerWallet: pick.wallet, assignedAt: now().toISOString(), lastError: null });
     let r: { status: number; workerWallet: string | null };
     try {
       r = await api.assign(e.taskId!, pick.executorId, signed.auth);
@@ -337,14 +355,18 @@ export function createEmHire({
     log(`hire ${t.id}: assigned to ${pick.wallet}, ${formatUnits(em.bounty, USDG_DECIMALS)} USDG in escrow`);
   }
 
-  /** the worker EM assigned, as Flat Fee signed the escrow for it; null when EM assigned someone Flat Fee signed nothing for */
+  /**
+   * The escrow that locked for the worker EM assigned: the newest authorization Flat Fee signed for that executor (a
+   * new one is only signed once the earlier ones can no longer be used, and each is sent right after it is signed).
+   * Null when EM assigned someone Flat Fee signed nothing for.
+   */
   const signedFor = (t: Task, executorId: string | null | undefined) =>
-    t.em!.signed.find((s) => !!executorId && s.executorId === String(executorId).toLowerCase()) ?? null;
+    [...t.em!.signed].reverse().find((s) => !!executorId && s.executorId === String(executorId).toLowerCase()) ?? null;
 
   function onAssigned(t: Task, remote: EmTask) {
     const s = signedFor(t, remote.executor_id);
     if (!s) {
-      save(t, { step: "assigned", lastError: "Execution Market assigned an executor Flat Fee signed no escrow for; no $WIF will go out" }, { status: "claimed" });
+      save(t, { step: "assigned", lastError: "Execution Market assigned an executor Flat Fee signed no escrow for: its delivery is not approved and no $WIF goes out" }, { status: "claimed" });
       return;
     }
     if (t.em!.step === "assigned" && t.em!.executorId === s.executorId) return;
@@ -356,6 +378,8 @@ export function createEmHire({
     const e = t.em!;
     onAssigned(t, remote);
     if (e.approval) return followApproval(t, remote);
+    // the escrow pays whom Flat Fee signed it for: a delivery from anyone else is not approved
+    if (!signedFor(t, remote.executor_id)) return;
     const subs = await api.submissions(e.taskId!);
     const open = subs
       .filter((s) => s?.status === "pending" && (s.agent_verdict == null || s.agent_verdict === "pending"))
@@ -379,20 +403,31 @@ export function createEmHire({
 
   async function approve(t: Task, remote: EmTask, sid: string, answer: string | null) {
     if (t.em!.approvals >= MAX_APPROVALS) {
-      return record(t, `the release failed ${MAX_APPROVALS} times; Flat Fee stopped approving, a person has to look at it`);
+      return record(t, `EM refused the release ${MAX_APPROVALS} times; Flat Fee stopped approving, a person has to look at it`);
     }
-    // the payer's release order, over the paymentInfo the merchant signed for the worker EM assigned
-    const signed = signedFor(t, remote.executor_id);
-    const order = signed ? await releaseOrder(signed.paymentInfo) : null;
-    save(t, { accepted: sid, approvals: t.em!.approvals + 1 });
+    const signed = signedFor(t, remote.executor_id)!;
+    save(t, { accepted: sid });
+    // the payer's release order (over the escrow that locked) goes along only once EM asks for it: EM checks any
+    // order it is sent, so an order it did not need is only another way for the approval to be refused
+    const send = async (withOrder: boolean) => api.approve(sid, "Accepted by Flat Fee.", withOrder ? await releaseOrder(signed.paymentInfo) : null);
     let approval;
     try {
-      approval = await api.approve(sid, "Accepted by Flat Fee.", order);
+      try {
+        approval = await send(t.em!.needsOrder);
+      } catch (err) {
+        if (!(err instanceof EmHttpError && err.code === "LIFECYCLE_ORDER_REQUIRED") || t.em!.needsOrder) throw err;
+        save(t, { needsOrder: true });
+        approval = await send(true);
+      }
     } catch (err) {
       // another approval of this task already runs on EM: follow it instead of approving again
       if (err instanceof EmHttpError && err.poll) {
-        save(t, { step: "approving", approval: { submissionId: sid, poll: err.poll }, approvals: t.em!.approvals - 1 });
+        save(t, { step: "approving", approval: { submissionId: sid, poll: err.poll } });
         return;
+      }
+      // only a refusal counts towards the cap: EM unreachable, slow or busy is tried again as often as it takes
+      if (err instanceof EmHttpError && (err.status === 502 || (err.status >= 400 && err.status < 500 && err.status !== 429))) {
+        save(t, { approvals: t.em!.approvals + 1 });
       }
       throw err;
     }
@@ -409,8 +444,10 @@ export function createEmHire({
     if (!op.done) return;
     if (op.state === "succeeded") return finish(t, remote, { submissionId, answer: null }, txHash(op.response?.data?.payment_tx));
     if (op.state === "failed") {
-      // EM refused and the escrow still holds the bounty: approved again on a later pass, up to MAX_APPROVALS
-      return save(t, { step: "assigned", approval: null, lastError: "Execution Market could not release the escrow" });
+      // EM refused and the escrow still holds the bounty: approved again on a later pass, up to MAX_APPROVALS, with the
+      // payer's release order if that is what EM asked for
+      const needsOrder = t.em!.needsOrder || JSON.stringify(op.response ?? {}).includes("LIFECYCLE_ORDER_REQUIRED");
+      return save(t, { step: "assigned", approval: null, approvals: t.em!.approvals + 1, needsOrder, lastError: "Execution Market could not release the escrow" });
     }
     // unresolved: EM cannot tell what happened to the escrow, so Flat Fee never approves again on its own
     record(t, `Execution Market could not tell whether the escrow was released (${op.state}); waiting for the task's status`);

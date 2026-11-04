@@ -149,16 +149,19 @@ export async function escrowReadiness(cfg: Config & { em: EmConfig }, paymentCon
     return `Execution Market does not take ${cfg.em.paymentToken} on ${cfg.chain.name}`;
   }
   const throwaway = Wallet.createRandom();
+  const worker = Wallet.createRandom().address;
   try {
-    await build(typedDataSigner(throwaway), {
+    const raw = await build(typedDataSigner(throwaway), {
       networkConfig,
       network: cfg.chain.name,
       payerWallet: throwaway.address,
-      workerWallet: Wallet.createRandom().address,
+      workerWallet: worker,
       bountyAtomic: cfg.em.bounty,
       tier: "micro",
       reviewDeadlineSec: Math.floor(Date.now() / 1000) + cfg.em.deadlineHours * 3600,
     });
+    // and what it built passes the same check a real assignment's does
+    checkPaymentAuth(cfg, throwaway.address, worker, raw);
   } catch (e) {
     return `the escrow builder cannot build an escrow on ${cfg.chain.name}: ${String((e as Error)?.message ?? e).slice(0, 160)}`;
   }
@@ -205,8 +208,9 @@ export async function escrowPaymentAuth({ cfg, wallet, build = buildEscrowPreAut
 
 /**
  * The payer's order to release an escrow Flat Fee approved, as Execution Market forwards it to the facilitator
- * (`lifecycle_order` of the approve): an EIP-712 LifecycleOrder over the paymentInfo the merchant signed at
- * assignment, valid for 10 minutes, built by the SDK. Only ever built for a delivery Flat Fee accepted.
+ * (`lifecycle_order` of the approve): an EIP-712 LifecycleOrder over the paymentInfo the merchant signed for the escrow
+ * that locked, for its own maxAmount, valid for 10 minutes, built by the SDK. Only ever built for a delivery Flat Fee
+ * accepted, and only sent once EM asks for it.
  */
 export async function releaseOrder({ cfg, wallet }: Pick<EscrowDeps, "cfg" | "wallet">, paymentInfo: Record<string, unknown>): Promise<Record<string, unknown>> {
   const signer = typedDataSigner(wallet);
@@ -214,7 +218,8 @@ export async function releaseOrder({ cfg, wallet }: Pick<EscrowDeps, "cfg" | "wa
     action: "release",
     paymentInfo: paymentInfo as unknown as LifecyclePaymentInfo,
     payer: wallet.address,
-    amount: cfg.em.bounty,
+    // what the escrow holds, as signed: not today's EM_BOUNTY_USDG, which may have changed since
+    amount: String(paymentInfo.maxAmount),
     chainId: cfg.chain.chainId,
     wallet: { getAddress: () => wallet.address, signTypedData: (json: string) => signer.signTypedData(json) },
   });

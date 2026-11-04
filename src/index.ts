@@ -8,7 +8,7 @@ import { connectChain } from "./chain.js";
 import { ConfigError, USDG_DECIMALS, formatUnits, loadConfig } from "./config.js";
 import { emClient } from "./em.js";
 import { createEmHire } from "./emhire.js";
-import { escrowPaymentAuth, escrowReadiness } from "./escrow.js";
+import { escrowPaymentAuth, escrowReadiness, releaseOrder } from "./escrow.js";
 import { Store } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
@@ -40,6 +40,7 @@ if (cfg.em) {
     sendWif: budgetedWif(cfg, chain, store),
     merchant: wallet.address,
     paymentAuth: (paymentConfig, worker, deadlineSec) => escrowPaymentAuth({ cfg: emCfg, wallet }, paymentConfig, worker, deadlineSec),
+    releaseOrder: (paymentInfo) => releaseOrder({ cfg: emCfg, wallet }, paymentInfo),
     ready: (paymentConfig) => escrowReadiness(emCfg, paymentConfig),
     usdgBalance: () => chain.balanceOf(cfg.chain.usdg, wallet.address),
     redact: (e) => safeMessage(e, [cfg.rpcUrl]),

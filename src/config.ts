@@ -202,7 +202,8 @@ function loadEm(env: Env, prices: Config["prices"], merchantKey: string | null):
   if (!merchantKey) throw new ConfigError("EM_HIRE=on needs MERCHANT_PRIVATE_KEY: it signs for Flat Fee on Execution Market and pays the escrow");
   const bounty = amount(env, "EM_BOUNTY_USDG", "0.20", USDG_DECIMALS);
   if (bounty <= 0n) throw new ConfigError("EM_BOUNTY_USDG must be above zero");
-  // each escrow is covered by the hire that bought it, whatever tier paid for it
+  // a hire's price covers its bounty at either tier. The buyer pays PAY_TO and the merchant wallet pays the escrow, so
+  // that wallet has to hold USDG for the open hires (the server refuses new hires when it cannot fund one more)
   if (bounty > prices.hireHolder) throw new ConfigError("EM_BOUNTY_USDG cannot be above PRICE_HIRE_HOLDER_USDG");
   if (bounty > BigInt(EM_DEPOSIT_LIMIT_USDG) * 10n ** BigInt(USDG_DECIMALS)) {
     throw new ConfigError(`EM_BOUNTY_USDG cannot be above the escrow's deposit limit (${EM_DEPOSIT_LIMIT_USDG} USDG)`);

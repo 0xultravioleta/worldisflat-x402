@@ -3,17 +3,16 @@
 // chosen worker as receiver. Built by the official builder (uvd-x402-sdk's buildEscrowPreAuth) and checked by Flat Fee
 // before it is built (EM's published escrow must be the one Flat Fee is configured for) and after (what was signed is
 // exactly that payment). The merchant signs nothing else for Execution Market: no direct payment to a worker, ever.
-import { getAddress, isAddress, verifyTypedData, type BaseWallet } from "ethers";
-import { ESCROW_CONTRACTS } from "uvd-x402-sdk/backend";
+import { Wallet, getAddress, isAddress, verifyTypedData, type BaseWallet } from "ethers";
 import {
-  ESCROW_OPERATORS,
   ESCROW_PAYMENT_INFO_TYPEHASH,
-  VERIFIED_USDC_DOMAINS,
   buildEscrowPreAuth,
+  buildLifecycleAuth,
   computeEscrowNonce,
   type EscrowNetworkConfig,
   type EscrowPaymentInfo,
   type EscrowPreAuthSigner,
+  type LifecyclePaymentInfo,
 } from "uvd-x402-sdk";
 import { USDG_DOMAIN, type Config, type EmConfig } from "./config.js";
 
@@ -132,20 +131,16 @@ export function checkPaymentAuth(cfg: Config & { em: EmConfig }, merchant: strin
   if (!same(signer, merchant)) fail("it is not signed by the merchant");
 }
 
-/** whether uvd-x402-sdk can build an escrow on `chainId`: its builder refuses a chain missing from any of these tables */
-export function sdkHasEscrowRow(chainId: number): boolean {
-  const row = (t: unknown) => !!(t as Record<number, unknown> | undefined)?.[chainId];
-  return row(ESCROW_CONTRACTS) && row(ESCROW_OPERATORS) && row(VERIFIED_USDC_DOMAINS);
-}
-
 /**
  * Why a hire could not run on Execution Market right now, or null when it can: EM must publish an escrow for this
- * network that is Flat Fee's own, take `EM_PAYMENT_TOKEN` there (when it lists its tokens), and the SDK must have the
- * chain's escrow row. Checked before the 402, so nobody pays for a hire that cannot be published or funded.
+ * network that is Flat Fee's own and take `EM_PAYMENT_TOKEN` there (when it lists its tokens), and the escrow builder
+ * must be able to build one. That last check is a dry run of the same builder with a throwaway key: what it signs is
+ * worthless (a fresh wallet with nothing in it), and nothing is sent. Checked before the 402.
  */
-export function escrowReadiness(cfg: Config & { em: EmConfig }, paymentConfig: unknown, sdkRow: (chainId: number) => boolean = sdkHasEscrowRow): string | null {
+export async function escrowReadiness(cfg: Config & { em: EmConfig }, paymentConfig: unknown, build: BuildPreAuth = buildEscrowPreAuth): Promise<string | null> {
+  let networkConfig: EscrowNetworkConfig;
   try {
-    escrowNetwork(cfg, paymentConfig);
+    networkConfig = escrowNetwork(cfg, paymentConfig);
   } catch (e) {
     return (e as Error).message;
   }
@@ -153,7 +148,20 @@ export function escrowReadiness(cfg: Config & { em: EmConfig }, paymentConfig: u
   if (tokens && typeof tokens === "object" && !Object.keys(tokens).some((k) => k.toUpperCase() === cfg.em.paymentToken.toUpperCase())) {
     return `Execution Market does not take ${cfg.em.paymentToken} on ${cfg.chain.name}`;
   }
-  if (!sdkRow(cfg.chain.chainId)) return `uvd-x402-sdk has no escrow row for ${cfg.chain.name} yet, so no escrow can be signed`;
+  const throwaway = Wallet.createRandom();
+  try {
+    await build(typedDataSigner(throwaway), {
+      networkConfig,
+      network: cfg.chain.name,
+      payerWallet: throwaway.address,
+      workerWallet: Wallet.createRandom().address,
+      bountyAtomic: cfg.em.bounty,
+      tier: "micro",
+      reviewDeadlineSec: Math.floor(Date.now() / 1000) + cfg.em.deadlineHours * 3600,
+    });
+  } catch (e) {
+    return `the escrow builder cannot build an escrow on ${cfg.chain.name}: ${String((e as Error)?.message ?? e).slice(0, 160)}`;
+  }
   return null;
 }
 
@@ -164,8 +172,17 @@ export interface EscrowDeps {
   build?: BuildPreAuth;
 }
 
+export interface SignedEscrow {
+  /** the X-Payment-Auth header */
+  auth: string;
+  /** what it locks, as signed: needed to release it, or to reclaim it */
+  paymentInfo: Record<string, unknown>;
+  /** unix seconds until which the authorization can still be used */
+  validBefore: number;
+}
+
 /** reads EM's escrow parameters, checks them, builds and signs the lock for `worker`, and checks what was signed */
-export async function escrowPaymentAuth({ cfg, wallet, build = buildEscrowPreAuth }: EscrowDeps, paymentConfig: unknown, worker: string, deadlineSec: number): Promise<string> {
+export async function escrowPaymentAuth({ cfg, wallet, build = buildEscrowPreAuth }: EscrowDeps, paymentConfig: unknown, worker: string, deadlineSec: number): Promise<SignedEscrow> {
   const networkConfig = escrowNetwork(cfg, paymentConfig);
   let raw: string;
   try {
@@ -182,5 +199,24 @@ export async function escrowPaymentAuth({ cfg, wallet, build = buildEscrowPreAut
     throw new EscrowRefused(`the escrow builder refused: ${(e as Error)?.message ?? String(e)}`);
   }
   checkPaymentAuth(cfg, wallet.address, worker, raw);
-  return raw;
+  const payload = (JSON.parse(raw) as { payload: { paymentInfo: Record<string, unknown>; authorization: { validBefore: string } } }).payload;
+  return { auth: raw, paymentInfo: payload.paymentInfo, validBefore: Number(payload.authorization.validBefore) };
+}
+
+/**
+ * The payer's order to release an escrow Flat Fee approved, as Execution Market forwards it to the facilitator
+ * (`lifecycle_order` of the approve): an EIP-712 LifecycleOrder over the paymentInfo the merchant signed at
+ * assignment, valid for 10 minutes, built by the SDK. Only ever built for a delivery Flat Fee accepted.
+ */
+export async function releaseOrder({ cfg, wallet }: Pick<EscrowDeps, "cfg" | "wallet">, paymentInfo: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const signer = typedDataSigner(wallet);
+  const order = await buildLifecycleAuth({
+    action: "release",
+    paymentInfo: paymentInfo as unknown as LifecyclePaymentInfo,
+    payer: wallet.address,
+    amount: cfg.em.bounty,
+    chainId: cfg.chain.chainId,
+    wallet: { getAddress: () => wallet.address, signTypedData: (json: string) => signer.signTypedData(json) },
+  });
+  return { action: "release", ...order };
 }

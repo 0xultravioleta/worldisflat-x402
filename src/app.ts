@@ -7,8 +7,8 @@ import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
 import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
-import { newEmState, type EmHire } from "./emhire.js";
-import type { Store } from "./store.js";
+import { newEmState, publicEm, type EmHire } from "./emhire.js";
+import type { Store, Task } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
 export interface AppDeps {
@@ -283,6 +283,9 @@ export function createApp({
     entryId: string;
   }
 
+  // a task as the public sees it: a board task as it is, an Execution Market one without its signed escrows
+  const view = (t: Task) => (t.em ? { ...t, em: publicEm(t.em) } : t);
+
   const receipt = (ctx: PaidCtx, cashbackTx: string | null) => ({
     network: cfg.chain.caip2,
     payer: ctx.payer,
@@ -373,7 +376,7 @@ export function createApp({
           const published = emHire.publish(task.id);
           const wait = new Promise<void>((r) => setTimeout(r, publishWaitMs).unref?.());
           const [, cb] = await Promise.all([Promise.race([published, wait]), cashback(ctx.entryId, ctx.payer)]);
-          return c.json({ task: store.task(task.id), via: "execution-market", poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
+          return c.json({ task: view(store.task(task.id)!), via: "execution-market", poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
         }
         const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx });
         store.updateLedger(ctx.entryId, { taskId: task.id });
@@ -394,10 +397,10 @@ export function createApp({
     ),
   );
 
-  app.get("/api/tasks", (c) => c.json(store.tasks()));
+  app.get("/api/tasks", (c) => c.json(store.tasks().map(view)));
   app.get("/api/tasks/:id", (c) => {
     const t = store.task(c.req.param("id"));
-    return t ? c.json(t) : c.json({ error: "no such task" }, 404);
+    return t ? c.json(view(t)) : c.json({ error: "no such task" }, 404);
   });
 
   // the task board is closed without WORKER_TOKEN; the token is compared in constant time

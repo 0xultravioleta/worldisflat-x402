@@ -12,6 +12,10 @@ export class EmHttpError extends Error {
     readonly status: number,
     readonly code: string | null,
     message: string,
+    /** what EM itself says about retrying (`retryable` in its body), when it says it */
+    readonly serverRetryable: boolean | null = null,
+    /** a settlement operation EM points to (`detail.poll`), only ever one of its own paths */
+    readonly poll: string | null = null,
   ) {
     super(message);
   }
@@ -29,7 +33,7 @@ export interface EmTask {
   escrow_tx?: string | null;
   payment_tx?: string | null;
   executor_id?: string | null;
-  escrow_lock_failure?: { code?: string | null; reason?: string | null } | null;
+  escrow_lock_failure?: { code?: string | null; reason?: string | null; retryable?: boolean | null; at?: string | null } | null;
 }
 
 export interface EmApplication {
@@ -41,6 +45,9 @@ export interface EmApplication {
   effective_reputation_score?: number | null;
   recommended?: boolean | null;
   review?: { level?: string } | null;
+  /** the party the applicant applied as: human, agent, human_via_agent, robot */
+  executor_type?: string | null;
+  executor_kind?: string | null;
 }
 
 export interface EmSubmission {
@@ -78,7 +85,8 @@ export interface EmApi {
   submissions(taskId: string): Promise<EmSubmission[]>;
   /** hands over what the worker delivered; EM records that the publisher has read it */
   openEvidence(submissionId: string): Promise<{ evidence: unknown; notes: string | null }>;
-  approve(submissionId: string, notes: string): Promise<EmApproval>;
+  /** approves, with the payer-signed release order when there is one (EM requires it where its facilitator does) */
+  approve(submissionId: string, notes: string, lifecycleOrder?: Record<string, unknown> | null): Promise<EmApproval>;
   reject(submissionId: string, notes: string): Promise<void>;
   cancel(taskId: string, reason: string): Promise<void>;
   /** a queued approval, by the poll path EM gave */
@@ -114,7 +122,9 @@ function errorOf(status: number, body: unknown): EmHttpError {
   const d = typeof detail === "object" && detail !== null ? detail : {};
   const code = [d.code, d.error, b.code, b.error].find((x): x is string => typeof x === "string") ?? null;
   const message = [typeof detail === "string" ? detail : undefined, d.message, b.message].find((x): x is string => typeof x === "string");
-  return new EmHttpError(status, code, `Execution Market answered ${status}${code ? ` ${code}` : ""}${message ? `: ${message.slice(0, 200)}` : ""}`);
+  const serverRetryable = [d.retryable, b.retryable].find((x): x is boolean => typeof x === "boolean") ?? null;
+  const poll = [d.poll, b.poll].find((x): x is string => typeof x === "string" && POLL.test(x)) ?? null;
+  return new EmHttpError(status, code, `Execution Market answered ${status}${code ? ` ${code}` : ""}${message ? `: ${message.slice(0, 200)}` : ""}`, serverRetryable, poll);
 }
 
 export function emClient({ apiUrl, wallet, chainId, fetch: fetchFn = globalThis.fetch, timeoutMs = 15_000 }: EmClientOptions): EmApi {
@@ -204,8 +214,8 @@ export function emClient({ apiUrl, wallet, chainId, fetch: fetchFn = globalThis.
       const b = (body ?? {}) as { evidence?: unknown; notes?: unknown };
       return { evidence: b.evidence ?? null, notes: typeof b.notes === "string" ? b.notes : null };
     },
-    async approve(submissionId, notes) {
-      const { status, body } = await call("POST", `/api/v1/submissions/${emId(submissionId)}/approve`, { notes });
+    async approve(submissionId, notes, lifecycleOrder) {
+      const { status, body } = await call("POST", `/api/v1/submissions/${emId(submissionId)}/approve`, { notes, ...(lifecycleOrder ? { lifecycle_order: lifecycleOrder } : {}) });
       const b = (body ?? {}) as { poll?: unknown; data?: { payment_tx?: unknown } };
       if (status === 202) {
         if (typeof b.poll !== "string" || !POLL.test(b.poll)) throw new EmHttpError(0, "bad_poll", "Execution Market queued the approval without a settlement operation to follow");

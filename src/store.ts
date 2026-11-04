@@ -26,6 +26,8 @@ export interface LedgerEntry {
 export interface EmTaskState {
   /** Flat Fee's step: publishing → published → assigning → assigned → (approving) → completed, or expired/failed */
   step: "publishing" | "published" | "assigning" | "assigned" | "approving" | "completed" | "expired" | "failed";
+  /** the Idempotency-Key of its publish: one task on Execution Market per hire, whatever is retried */
+  key: string;
   /** the task's id on Execution Market, once published */
   taskId: string | null;
   /** the task's status on Execution Market, as last read */
@@ -37,6 +39,15 @@ export interface EmTaskState {
   escrowTx: string | null;
   /** executors whose escrow lock failed, never tried again for this task */
   skipped: string[];
+  /**
+   * every escrow authorization the merchant signed for this task: who it pays, until when it can still be used, the
+   * paymentInfo (needed to release it, or to reclaim it) and the signed header itself, sent again rather than re-signed
+   */
+  signed: { executorId: string; wallet: string; validBefore: number; paymentInfo: Record<string, unknown>; auth: string }[];
+  /** the delivery that passed Flat Fee's review and was approved (or is being approved) */
+  accepted: string | null;
+  /** approvals sent; capped, so a release that keeps failing waits for a person */
+  approvals: number;
   /** deliveries Flat Fee rejected, with the reason it gave */
   rejected: { submissionId: string; reason: string }[];
   /** an approval EM queued (202): its settlement operation, followed until done */

@@ -138,6 +138,8 @@ function emDouble() {
     approveInFlight: false,
     /** EM answers its payment config with a 403 */
     configForbidden: false,
+    /** EM refuses the assignment outright (402 escrow_lock_failed), saying whether that is worth another try */
+    assignRefused: null as null | { retryable: boolean },
     /** escrow parameters EM publishes, changed per test */
     network: { chain_id: CHAIN_ID, usdc: USDG, ...{ escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector } } as Any,
   };
@@ -220,6 +222,7 @@ function emDouble() {
     const { executor_id } = await c.req.json();
     const app_ = st.apps.get(t.id)!.find((a) => a.executor_id === executor_id);
     if (knobs.dropAssign) return c.json({ error: "SERVICE_UNAVAILABLE", message: "try again" }, 503);
+    if (knobs.assignRefused) return c.json({ detail: { error: "escrow_lock_failed", code: "LOCK_REVERTED", retryable: knobs.assignRefused.retryable } }, 402);
     const auth = JSON.parse(c.req.header("x-payment-auth") ?? "null");
     st.assigns.push({ taskId: t.id, executorId: executor_id, auth });
     // what the facilitator checks before it locks: a signed ReceiveWithAuthorization of the bounty, from the
@@ -1028,6 +1031,8 @@ test("an assignment that never reached EM is sent again with the same authorizat
   await s.hire.tick();
   assert.equal(s.em.st.assigns.length, 0);
   assert.equal(task(s, id).em!.signed.length, 1, "signed a second authorization");
+  // a better-ranked applicant arriving meanwhile does not get a second live authorization
+  s.em.apply(task(s, id).em!.taskId!, { wallet: Wallet.createRandom().address, score: 99 });
   s.em.knobs.dropAssign = false;
   await s.hire.tick();
   assert.deepEqual(s.em.st.assigns.map((a) => a.executorId), [workers[0].executorId]);
@@ -1049,6 +1054,33 @@ test("a failed lock EM says was not the applicant's fault sends the same authori
   assert.equal(s.em.st.assigns[0].auth.payload.authorization.nonce, s.em.st.assigns[1].auth.payload.authorization.nonce);
   assert.deepEqual(task(s, id).em!.skipped, []);
   assert.equal(task(s, id).em!.signed.length, 1);
+});
+
+test("an assignment EM refuses skips the applicant, unless EM says the refusal is worth another try", async () => {
+  for (const retryable of [false, true]) {
+    const s = await setup();
+    const { id, workers } = await hireWithApplicants(s, 2);
+    s.em.knobs.assignRefused = { retryable };
+    await s.hire.tick();
+    assert.equal(task(s, id).em!.step, "published");
+    assert.deepEqual(task(s, id).em!.skipped, retryable ? [] : [workers[0].executorId], `retryable ${retryable}`);
+  }
+});
+
+test("a delivery Flat Fee rejected for its length, that EM released anyway, is the buyer's answer but earns no $WIF", async () => {
+  const s = await setup();
+  const { id, emId } = await hireWithApplicants(s, 1);
+  await s.hire.tick();
+  // 2001 bytes as delivered, 2000 once trimmed: rejected on the manifest, readable once opened
+  const long = s.em.deliver(emId, { text_response: " " + "x".repeat(MAX_ANSWER_BYTES) });
+  await s.hire.tick();
+  assert.equal(s.em.st.rejects[0].submissionId, long);
+  s.em.autoRelease(emId, long);
+  sent.length = 0;
+  await s.hire.tick();
+  assert.equal(task(s, id).answer, "x".repeat(MAX_ANSWER_BYTES));
+  assert.match(task(s, id).rewardError!, /did not accept/);
+  assert.equal(sent.length, 0);
 });
 
 test("EM pays a delivery Flat Fee rejected (arbitration, or its own release): the task ends, and no $WIF goes out", async () => {

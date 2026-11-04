@@ -302,17 +302,13 @@ export function createEmHire({
     // rather than signed anew, and no other applicant gets one until it can no longer be used: two live escrow
     // authorizations for one task could both lock.
     const live = t.em!.signed.filter((s) => s.validBefore > nowSec());
-    let pick = candidates[0];
-    let signed = live.find((s) => s.executorId === pick.executorId);
-    if (live.length && !signed) {
-      const reuse = candidates.find((c) => live.some((s) => s.executorId === c.executorId));
-      if (!reuse) {
-        const until = new Date(Math.max(...live.map((s) => s.validBefore)) * 1000).toISOString();
-        return record(t, `waiting until ${until}, when the last escrow authorization expires, before signing one for another applicant`);
-      }
-      pick = reuse;
-      signed = live.find((s) => s.executorId === pick.executorId);
+    const reuse = candidates.find((c) => live.some((s) => s.executorId === c.executorId));
+    if (live.length && !reuse) {
+      const until = new Date(Math.max(...live.map((s) => s.validBefore)) * 1000).toISOString();
+      return record(t, `waiting until ${until}, when the last escrow authorization expires, before signing one for another applicant`);
     }
+    const pick = reuse ?? candidates[0];
+    let signed = live.find((s) => s.executorId === pick.executorId);
     if (!signed) {
       const fresh = await paymentAuth(await api.paymentConfig(), pick.wallet, Math.floor(deadlineOf(t) / 1000));
       signed = { executorId: pick.executorId, wallet: pick.wallet, ...fresh };

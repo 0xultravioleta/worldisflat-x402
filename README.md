@@ -81,8 +81,10 @@ the $WIF cashback); then:
 1. Flat Fee publishes the task on Execution Market for Robinhood Chain, signed by the merchant wallet (ERC-8128).
 2. A human applies. Flat Fee assigns the applicant Execution Market ranks first (never the buyer) and the merchant pays
    the bounty (`EM_BOUNTY_USDG`, 0.20 USDG by default) into a **USDG escrow**, built with `uvd-x402-sdk`'s escrow builder.
-3. The human delivers a text answer. Flat Fee approves it, and the escrow pays the human; a delivery without a usable
-   answer is rejected with the reason, and the human can deliver again.
+3. The human delivers a text answer. Flat Fee opens it and approves it, and the escrow pays the human. A delivery
+   without a usable answer is opened, then rejected with the reason: Execution Market keeps the escrow of a delivery
+   its publisher read, so the human can deliver again and still be paid. If Execution Market sends the escrow back
+   anyway, Flat Fee closes the task there instead of asking for more work.
 4. Flat Fee sends the human **50 $WIF** on Robinhood Chain, and the buyer reads the answer at `GET /api/tasks/:id`.
 
 It is **off by default, and off on the live demo**: Execution Market does not take Robinhood Chain tasks yet (its
@@ -220,7 +222,9 @@ through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/em
   after, the signed authorization is checked again (amount, recipient, receiver, nonce, signer). `EM_BOUNTY_USDG` cannot
   be above the holder price of a hire, so a hire's price covers its bounty. A hire Flat Fee can tell would not run
   (Execution Market cannot take it, its escrow builder cannot build one, the merchant cannot fund one more escrow, or
-  Execution Market refused the last task) is refused before the 402.
+  Execution Market refused the last task for this server's settings or identity) is refused before the 402, and so is
+  a request Execution Market's own public rules would refuse to publish (a sale listing, a cloud credential or
+  pre-signed URL, text that is not valid Unicode).
   The merchant also signs, at approval and only when Execution Market asks for it, the payer's release order for that
   escrow. The worker is paid
   $WIF only for a delivery Flat Fee accepted. With `EM_HIRE=on` the merchant wallet holds USDG for the bounties as well
@@ -246,7 +250,9 @@ Lightsail Containers in us-east-2 (nano, 7 USD a month): push the image with
 `aws lightsail push-container-image --region us-east-2 --service-name flatfee --label web --image flatfee`, set the
 pushed image name and the values in `deploy/aws/terraform.tfvars` (from the `.example`; `worker_token` is required, at
 least 16 characters), then `terraform apply`. `terraform destroy` turns it off. See Safety for where the merchant key
-ends up.
+ends up. The custom domain (`flatfee.ultravioletadao.xyz`) and its certificate are attached outside terraform, which
+leaves them alone (`ignore_changes`). Every apply that changes the container's environment redeploys it, and the new
+container starts with an empty `DATA_DIR`.
 
 ## What's next
 

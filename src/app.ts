@@ -7,7 +7,9 @@ import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
 import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
+import { newEmState, type EmHire } from "./emhire.js";
 import type { Store } from "./store.js";
+import { budgetedWif } from "./wif.js";
 
 export interface AppDeps {
   cfg: Config;
@@ -22,6 +24,10 @@ export interface AppDeps {
   middleware?: typeof createHonoMiddleware;
   /** serving a local fork (npm run demo): the landing page then refuses to sign with a browser wallet */
   localFork?: boolean;
+  /** EM_HIRE=on: the driver that runs each hire on Execution Market (src/emhire.ts); required then, refused otherwise */
+  emHire?: EmHire | null;
+  /** milliseconds a paid hire waits for its publish on Execution Market before answering with the task as it stands */
+  publishWaitMs?: number;
 }
 
 type Route = "ask" | "hire";
@@ -104,29 +110,23 @@ export function createApp({
   now = () => new Date(),
   middleware = createHonoMiddleware,
   localFork = false,
+  emHire = null,
+  publishWaitMs = 10_000,
 }: AppDeps) {
   const app = new Hono();
   const redact = (e: unknown) => safeMessage(e, [cfg.rpcUrl]);
+  // EM_HIRE=on without the driver would take money for tasks nobody publishes: refuse to start instead
+  if (cfg.em && !emHire) throw new Error("EM_HIRE=on needs the Execution Market driver (createEmHire)");
+  if (!cfg.em && emHire) throw new Error("an Execution Market driver was given but EM_HIRE is off");
 
-  // $WIF the server may send per UTC day (cashback + worker rewards), kept in state.json so a restart does not refill
-  // it. Reserved before each send; given back only when nothing was broadcast, since a transfer with a hash may still
-  // be mined. Whatever $WIF is worth tomorrow, a loop of paid calls cannot drain the merchant faster than this.
-  const sendWifBudgeted = async (to: string, amount: bigint) => {
-    const day = now().toISOString().slice(0, 10);
-    if (!store.reserveWif(day, amount, cfg.wif.dailyBudget)) throw new Error("daily $WIF budget used up (WIF_DAILY_BUDGET)");
-    try {
-      return await chain.sendWif(to, amount);
-    } catch (e) {
-      if (!(e instanceof WifTransferUnconfirmed)) store.releaseWif(day, amount);
-      throw e;
-    }
-  };
+  // $WIF out of the merchant wallet, inside the daily budget (src/wif.ts)
+  const sendWifBudgeted = budgetedWif(cfg, chain, store, now);
   const price = (route: Route, tier: Tier) =>
     route === "ask" ? (tier === "holder" ? cfg.prices.askHolder : cfg.prices.ask) : tier === "holder" ? cfg.prices.hireHolder : cfg.prices.hire;
 
   const descriptions: Record<Route, string> = {
     ask: `Ask the Flat Fee agent a question about ${cfg.chain.label}`,
-    hire: "Hire a human for a small task through Flat Fee",
+    hire: emHire ? "Hire a human for a small task through Flat Fee, on Execution Market" : "Hire a human for a small task through Flat Fee",
   };
 
   // one paywall per (route, tier): the tier only ever lowers the price, and it is read from the signed payer
@@ -207,7 +207,10 @@ export function createApp({
       // refuse bad input before the 402, so nobody pays for a request we would reject
       const input = validate(body);
       if (!input) return c.json({ error: `send JSON with a non-empty "${route === "ask" ? "question" : "request"}" of at most ${MAX_TEXT} characters` }, 400);
-      if (route === "hire" && !cfg.workerToken) return c.json({ error: "hiring is off on this server: no WORKER_TOKEN, so nobody could take the task" }, 503);
+      if (route === "hire" && !emHire && !cfg.workerToken) return c.json({ error: "hiring is off on this server: no WORKER_TOKEN, so nobody could take the task" }, 503);
+      // through Execution Market, a hire that could not be published or funded is refused before anyone pays for it
+      const paused = route === "hire" ? (emHire?.unavailable() ?? null) : null;
+      if (paused) return c.json({ error: `hiring is paused: ${paused}`, retryable: true }, 503);
 
       const header = paymentHeaderOf((n) => c.req.header(n));
       if (header.conflict) return c.json({ error: "send one payment header: PAYMENT-SIGNATURE and X-PAYMENT differ" }, 400);
@@ -317,6 +320,10 @@ export function createApp({
         cashback: formatUnits(cfg.wif.cashback, WIF_DECIMALS),
         workerReward: formatUnits(cfg.wif.workerReward, WIF_DECIMALS),
       },
+      // who does a hire: Flat Fee's own board, or a human on Execution Market paid from a USDG escrow
+      hire: cfg.em
+        ? { via: "execution-market", bounty: formatUnits(cfg.em.bounty, USDG_DECIMALS), deadlineHours: cfg.em.deadlineHours }
+        : { via: "board" },
     }),
   );
 
@@ -358,6 +365,16 @@ export function createApp({
       "hire",
       (b) => text(b, "request"),
       async (c, request, ctx) => {
+        if (emHire) {
+          // Execution Market: the task is published there now (or by the loop, if EM is slow), and the answer comes
+          // back on the poll link once a worker delivered and Flat Fee approved it
+          const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx, via: "em", em: newEmState(now()) });
+          store.updateLedger(ctx.entryId, { taskId: task.id });
+          const published = emHire.publish(task.id);
+          const wait = new Promise<void>((r) => setTimeout(r, publishWaitMs).unref?.());
+          const [, cb] = await Promise.all([Promise.race([published, wait]), cashback(ctx.entryId, ctx.payer)]);
+          return c.json({ task: store.task(task.id), via: "execution-market", poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
+        }
         const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx });
         store.updateLedger(ctx.entryId, { taskId: task.id });
         const cb = await cashback(ctx.entryId, ctx.payer);
@@ -399,6 +416,7 @@ export function createApp({
     if (!worker || !isAddress(worker)) return c.json({ error: 'send {"worker": "0x..."}' }, 400);
     const t = store.task(c.req.param("id"));
     if (!t) return c.json({ error: "no such task" }, 404);
+    if (t.via === "em") return c.json({ error: "this task runs on Execution Market: take it there" }, 409);
     if (t.status !== "open") return c.json({ error: `task is ${t.status}` }, 409);
     // whoever paid for a task cannot also take it and collect the $WIF reward on their own payment
     if (getAddress(worker.toLowerCase()) === t.payer) return c.json({ error: "the payer of a task cannot claim it" }, 409);
@@ -413,6 +431,7 @@ export function createApp({
     if (!result || !worker || !isAddress(worker)) return c.json({ error: 'send {"worker": "0x...", "answer": "..."}' }, 400);
     const t = store.task(c.req.param("id"));
     if (!t) return c.json({ error: "no such task" }, 404);
+    if (t.via === "em") return c.json({ error: "this task runs on Execution Market: deliver it there" }, 409);
     if (t.status !== "claimed" || t.worker !== getAddress(worker.toLowerCase())) {
       return c.json({ error: "only the worker who claimed this task can complete it" }, 409);
     }

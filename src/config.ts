@@ -65,12 +65,33 @@ export interface Config {
   };
   /** signs the $WIF transfers; only needed when cashback or workerReward is on */
   merchantKey: string | null;
-  /** shared secret the human worker console sends as X-Worker-Token; required when workerReward is on */
+  /** shared secret the human worker console sends as X-Worker-Token; required when workerReward is on (board mode) */
   workerToken: string | null;
+  /** hire a human through Execution Market (EM_HIRE=on); null keeps the task board */
+  em: EmConfig | null;
   port: number;
   publicUrl: string | null;
   dataDir: string;
 }
+
+/** Flat Fee as an agent on Execution Market: where it publishes, what it locks in escrow, and which contracts it trusts. */
+export interface EmConfig {
+  /** Execution Market's API origin, e.g. https://api.execution.market */
+  apiUrl: string;
+  /** atomic USDG the merchant locks in escrow per task: the worker's bounty */
+  bounty: bigint;
+  deadlineHours: number;
+  pollSeconds: number;
+  /** the token EM records for the task (USDG on Robinhood Chain) */
+  paymentToken: string;
+  /** the escrow contracts on this network, as deployed for EM; an escrow is only signed when EM publishes the same ones */
+  escrow: { escrow: string; operator: string; tokenCollector: string };
+  /** optional `reputation_network` for the tasks Flat Fee publishes; null lets EM decide */
+  reputationNetwork: string | null;
+}
+
+/** the on-chain deposit limit of the x402r escrow, per deposit */
+export const EM_DEPOSIT_LIMIT_USDG = 100;
 
 export class ConfigError extends Error {}
 
@@ -131,6 +152,83 @@ function amount(env: Env, key: string, fallback: string, decimals: number): bigi
   return parseUnitsStrict(str(env, key) ?? fallback, decimals, key);
 }
 
+/** on/off switches: on, true, 1, yes / off, false, 0, no (any case); unset is off; anything else is refused */
+export function onOff(env: Env, key: string): boolean {
+  const v = (str(env, key) ?? "off").toLowerCase();
+  if (["on", "true", "1", "yes"].includes(v)) return true;
+  if (["off", "false", "0", "no"].includes(v)) return false;
+  throw new ConfigError(`${key} must be on or off`);
+}
+
+function integer(env: Env, key: string, fallback: number, min: number, max: number): number {
+  const raw = str(env, key) ?? String(fallback);
+  const n = /^\d{1,9}$/.test(raw) ? Number(raw) : NaN;
+  if (!(n >= min && n <= max)) throw new ConfigError(`${key} must be a whole number from ${min} to ${max}`);
+  return n;
+}
+
+/**
+ * An API origin: https (http only for localhost), no credentials, no path, query or fragment. The value is not repeated
+ * in the error, since a URL can carry a key.
+ */
+export function apiOrigin(env: Env, key: string): string | null {
+  const v = str(env, key);
+  if (v === null) return null;
+  let u: URL;
+  try {
+    u = new URL(v);
+  } catch {
+    throw new ConfigError(`${key} is not a URL; the value is not shown`);
+  }
+  const local = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]";
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) throw new ConfigError(`${key} must start with https:// (http:// only for localhost)`);
+  if (u.username || u.password) throw new ConfigError(`${key} must not carry credentials; the value is not shown`);
+  if (u.pathname !== "/" || u.search || u.hash) throw new ConfigError(`${key} must be an origin only, like https://api.execution.market`);
+  return u.origin;
+}
+
+function contract(env: Env, key: string): string {
+  const a = address(env, key);
+  if (!a) throw new ConfigError(`EM_HIRE=on needs ${key}: the escrow contracts on this network, as deployed for Execution Market`);
+  if (BigInt(a) === 0n) throw new ConfigError(`${key} cannot be the zero address`);
+  return a;
+}
+
+function loadEm(env: Env, prices: Config["prices"], merchantKey: string | null): EmConfig | null {
+  if (!onOff(env, "EM_HIRE")) return null;
+  const apiUrl = apiOrigin(env, "EM_API_URL");
+  if (!apiUrl) throw new ConfigError("EM_HIRE=on needs EM_API_URL (Execution Market's API origin)");
+  // the merchant wallet is Flat Fee's identity on Execution Market and the payer of every escrow
+  if (!merchantKey) throw new ConfigError("EM_HIRE=on needs MERCHANT_PRIVATE_KEY: it signs for Flat Fee on Execution Market and pays the escrow");
+  const bounty = amount(env, "EM_BOUNTY_USDG", "0.20", USDG_DECIMALS);
+  if (bounty <= 0n) throw new ConfigError("EM_BOUNTY_USDG must be above zero");
+  // each escrow is covered by the hire that bought it, whatever tier paid for it
+  if (bounty > prices.hireHolder) throw new ConfigError("EM_BOUNTY_USDG cannot be above PRICE_HIRE_HOLDER_USDG");
+  if (bounty > BigInt(EM_DEPOSIT_LIMIT_USDG) * 10n ** BigInt(USDG_DECIMALS)) {
+    throw new ConfigError(`EM_BOUNTY_USDG cannot be above the escrow's deposit limit (${EM_DEPOSIT_LIMIT_USDG} USDG)`);
+  }
+  const paymentToken = str(env, "EM_PAYMENT_TOKEN") ?? "USDG";
+  if (!/^[A-Za-z0-9]{1,16}$/.test(paymentToken)) throw new ConfigError("EM_PAYMENT_TOKEN must be a token symbol, like USDG");
+  const reputationNetwork = str(env, "EM_REPUTATION_NETWORK")?.toLowerCase() ?? null;
+  if (reputationNetwork !== null && !/^[a-z0-9-]{1,30}$/.test(reputationNetwork)) {
+    throw new ConfigError("EM_REPUTATION_NETWORK must be a network name, like robinhood");
+  }
+  const escrow = {
+    escrow: contract(env, "EM_ESCROW_ADDRESS"),
+    operator: contract(env, "EM_OPERATOR_ADDRESS"),
+    tokenCollector: contract(env, "EM_TOKEN_COLLECTOR_ADDRESS"),
+  };
+  return {
+    apiUrl,
+    bounty,
+    deadlineHours: integer(env, "EM_DEADLINE_HOURS", 24, 1, 720),
+    pollSeconds: integer(env, "EM_POLL_SECONDS", 30, 5, 3600),
+    paymentToken,
+    escrow,
+    reputationNetwork,
+  };
+}
+
 export function loadConfig(env: Env = process.env): Config {
   const networkName = (str(env, "NETWORK") ?? "robinhood-testnet").toLowerCase();
   if (networkName !== "robinhood" && networkName !== "robinhood-testnet") {
@@ -171,7 +269,10 @@ export function loadConfig(env: Env = process.env): Config {
     if (v > wif.dailyBudget) throw new ConfigError(`WIF_DAILY_BUDGET is below one ${name}`);
   }
   const workerToken = str(env, "WORKER_TOKEN");
-  if (wif.workerReward > 0n && !workerToken) {
+  const em = loadEm(env, prices, merchantKey);
+  // on the board, the token is what keeps strangers from completing tasks; through Execution Market, Flat Fee itself
+  // approves the delivery before any $WIF goes out
+  if (wif.workerReward > 0n && !workerToken && !em) {
     throw new ConfigError("WIF_WORKER_REWARD needs WORKER_TOKEN, or anyone could complete tasks and collect $WIF");
   }
 
@@ -187,6 +288,7 @@ export function loadConfig(env: Env = process.env): Config {
     wif,
     merchantKey,
     workerToken,
+    em,
     port,
     publicUrl: str(env, "PUBLIC_URL")?.replace(/\/+$/, "") ?? null,
     dataDir: str(env, "DATA_DIR") ?? "data",

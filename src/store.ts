@@ -22,10 +22,35 @@ export interface LedgerEntry {
   authorization?: string;
 }
 
+/** Where a task stands on Execution Market (EM_HIRE=on), as Flat Fee last saw it */
+export interface EmTaskState {
+  /** Flat Fee's step: publishing → published → assigning → assigned → (approving) → completed, or expired/failed */
+  step: "publishing" | "published" | "assigning" | "assigned" | "approving" | "completed" | "expired" | "failed";
+  /** the task's id on Execution Market, once published */
+  taskId: string | null;
+  /** the task's status on Execution Market, as last read */
+  status: string | null;
+  deadline: string | null;
+  executorId: string | null;
+  /** the worker's payout wallet on this network: the escrow's receiver and the $WIF reward's recipient */
+  workerWallet: string | null;
+  escrowTx: string | null;
+  /** executors whose escrow lock failed, never tried again for this task */
+  skipped: string[];
+  /** deliveries Flat Fee rejected, with the reason it gave */
+  rejected: { submissionId: string; reason: string }[];
+  /** an approval EM queued (202): its settlement operation, followed until done */
+  approval: { submissionId: string; poll: string } | null;
+  paymentTx: string | null;
+  lastError: string | null;
+  updatedAt: string;
+}
+
 export interface Task {
   id: string;
   createdAt: string;
-  status: "open" | "claimed" | "done";
+  /** board: open → claimed → done; through Execution Market the same, or expired */
+  status: "open" | "claimed" | "done" | "expired";
   request: string;
   payer: string;
   paidTx: string | null;
@@ -34,6 +59,9 @@ export interface Task {
   doneAt: string | null;
   rewardTx: string | null;
   rewardError?: string;
+  /** "em" when the task runs on Execution Market instead of the board */
+  via?: "em";
+  em?: EmTaskState;
 }
 
 interface State {
@@ -122,7 +150,7 @@ export class Store {
     return this.state.ledger.slice(0, limit);
   }
 
-  createTask(t: Pick<Task, "request" | "payer" | "paidTx">): Task {
+  createTask(t: Pick<Task, "request" | "payer" | "paidTx"> & Partial<Pick<Task, "via" | "em">>): Task {
     const task: Task = {
       id: randomUUID().slice(0, 8),
       createdAt: new Date().toISOString(),

@@ -75,6 +75,43 @@ variable "worker_token" {
   }
 }
 
+# Hiring through Execution Market (docs/EXECUTION-MARKET.md): off by default; empty values keep the app's defaults.
+# On, the merchant wallet above also pays a USDG escrow per hire, so it holds USDG for the bounties too.
+variable "em_hire" {
+  type    = string
+  default = "off"
+}
+
+variable "em_api_url" {
+  type    = string
+  default = ""
+}
+
+variable "em_bounty_usdg" {
+  type    = string
+  default = ""
+}
+
+variable "em_escrow_address" {
+  type    = string
+  default = ""
+}
+
+variable "em_operator_address" {
+  type    = string
+  default = ""
+}
+
+variable "em_token_collector_address" {
+  type    = string
+  default = ""
+}
+
+variable "em_reputation_network" {
+  type    = string
+  default = ""
+}
+
 resource "aws_lightsail_container_service" "flatfee" {
   name        = var.service_name
   power       = "nano"
@@ -94,15 +131,22 @@ resource "aws_lightsail_container_service_deployment_version" "flatfee" {
     image          = var.image
     command        = []
     environment = {
-      NETWORK              = var.network
-      PAY_TO               = var.pay_to
-      PUBLIC_URL           = var.public_url
-      WIF_CASHBACK         = var.wif_cashback
-      WIF_WORKER_REWARD    = var.wif_worker_reward
-      WIF_DAILY_BUDGET     = var.wif_daily_budget
-      MERCHANT_PRIVATE_KEY = var.merchant_private_key
-      WORKER_TOKEN         = var.worker_token
-      PORT                 = "3000"
+      NETWORK                    = var.network
+      PAY_TO                     = var.pay_to
+      PUBLIC_URL                 = var.public_url
+      WIF_CASHBACK               = var.wif_cashback
+      WIF_WORKER_REWARD          = var.wif_worker_reward
+      WIF_DAILY_BUDGET           = var.wif_daily_budget
+      MERCHANT_PRIVATE_KEY       = var.merchant_private_key
+      WORKER_TOKEN               = var.worker_token
+      PORT                       = "3000"
+      EM_HIRE                    = var.em_hire
+      EM_API_URL                 = var.em_api_url
+      EM_BOUNTY_USDG             = var.em_bounty_usdg
+      EM_ESCROW_ADDRESS          = var.em_escrow_address
+      EM_OPERATOR_ADDRESS        = var.em_operator_address
+      EM_TOKEN_COLLECTOR_ADDRESS = var.em_token_collector_address
+      EM_REPUTATION_NETWORK      = var.em_reputation_network
     }
     ports = {
       "3000" = "HTTP"

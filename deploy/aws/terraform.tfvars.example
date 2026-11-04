@@ -10,3 +10,11 @@ wif_daily_budget     = "500"
 merchant_private_key = ""
 # required, at least 16 characters: openssl rand -hex 16
 worker_token         = ""
+# hire through Execution Market (docs/EXECUTION-MARKET.md): keep "off" until EM takes Robinhood Chain escrows
+em_hire                    = "off"
+em_api_url                 = ""
+em_bounty_usdg             = ""
+em_escrow_address          = ""
+em_operator_address        = ""
+em_token_collector_address = ""
+em_reputation_network      = ""

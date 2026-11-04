@@ -32,7 +32,7 @@
 
     <section class="card" id="hire">
       <h2>2 · Hire a human</h2>
-      <p class="muted">Pay once, the task lands on the board below, a person claims it and answers. They earn $WIF for it.</p>
+      <p class="muted" id="hire-how">Pay once, the task lands on the board below, a person claims it and answers. They earn $WIF for it.</p>
       <textarea id="request" rows="2" maxlength="500">Check that the cafe on 5th street is open and send a photo of the menu.</textarea>
       <div class="row">
         <button id="hire-pay">Pay <span data-price="hire">…</span> USDG with wallet</button>
@@ -56,7 +56,7 @@ npm run buy -- "What is 0x5173b8ea6923c2d40267890d45c46a3480954773?"   # signs, 
 
     <section class="card">
       <h2>Task board</h2>
-      <p class="muted">Humans claim paid tasks and answer them. Completing one sends the worker $WIF.</p>
+      <p class="muted" id="board-how">Humans claim paid tasks and answer them. Completing one sends the worker $WIF.</p>
       <div class="row worker">
         <input id="worker" placeholder="your wallet 0x… (to claim)" />
         <input id="worker-token" placeholder="worker token" type="password" />

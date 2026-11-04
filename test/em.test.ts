@@ -122,6 +122,8 @@ function emDouble() {
     asyncApprove: false,
     lockFails: false,
     refuseCreate: false,
+    /** EM's listing lags behind a rejection: the delivery still reads pending */
+    staleReject: false,
     /** escrow parameters EM publishes, changed per test */
     network: { chain_id: CHAIN_ID, usdc: USDG, ...{ escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector } } as Any,
   };
@@ -262,9 +264,10 @@ function emDouble() {
     const s = sub(c.req.param("sid"));
     if (!s || !own(c, s.task_id)) return c.json({ error: "FORBIDDEN", message: "not the publisher" }, 403);
     const { notes, severity } = await c.req.json();
+    st.rejects.push({ submissionId: s.id, notes, severity, opened: st.opened.has(s.id) });
+    if (knobs.staleReject) return c.json({ success: true, message: "rejected" });
     s.agent_verdict = "rejected";
     s.status = "rejected";
-    st.rejects.push({ submissionId: s.id, notes, severity, opened: st.opened.has(s.id) });
     st.tasks.get(s.task_id)!.status = "in_progress"; // minor: the same worker delivers again
     return c.json({ success: true, message: "rejected" });
   });
@@ -326,12 +329,12 @@ function emDouble() {
     knobs,
     fetch,
     /** a worker applies (EM's ranking fields included) */
-    apply(taskId: string, a: { wallet: string; score?: number; review?: Any | null; executorId?: string }) {
+    apply(taskId: string, a: { wallet: string; score?: number; review?: Any | null; executorId?: string; status?: string }) {
       const row = {
         id: randomUUID(),
         task_id: taskId,
         executor_id: a.executorId ?? randomUUID(),
-        status: "pending",
+        status: a.status ?? "pending",
         created_at: new Date(clock()).toISOString(),
         wallet_address: a.wallet,
         effective_reputation_score: a.score ?? 0,
@@ -521,7 +524,7 @@ test("EM_HIRE is off unless switched on, and on it needs its API, its contracts 
   assert.equal(loadConfig(env({ WORKER_TOKEN: "secret" })).em, null);
   for (const off of ["off", "OFF", " false ", "0", "no", ""]) assert.equal(loadConfig(env({ ...EM_ENV, WORKER_TOKEN: "secret", EM_HIRE: off })).em, null, `"${off}" is off`);
   for (const on of ["on", "ON", " true", "1", "Yes"]) assert.ok(loadConfig(env({ ...EM_ENV, EM_HIRE: on })).em, `"${on}" is on`);
-  assert.throws(() => loadConfig(env({ ...EM_ENV, EM_HIRE: "maybe" })), ConfigError);
+  for (const bad of ["maybe", "onn", "2"]) assert.throws(() => loadConfig(env({ ...EM_ENV, WORKER_TOKEN: "secret", EM_HIRE: bad })), /EM_HIRE must be on or off/);
 
   const c = loadConfig(env(EM_ENV)).em!;
   assert.equal(c.apiUrl, "https://em.test");
@@ -619,6 +622,12 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   assert.match(body.instructions, /Is the cafe on 5th street open\?/);
   assert.ok(body.title.length >= 5 && body.instructions.length >= 20);
 
+  // the board never takes a task that runs on Execution Market, whatever its state
+  const board = (action: string, worker: string) =>
+    call(s.app, `/api/tasks/${id}/${action}`, { method: "POST", headers: { "content-type": "application/json", "x-worker-token": "secret" }, body: JSON.stringify({ worker, answer: "x" }) });
+  assert.equal((await board("claim", Wallet.createRandom().address)).status, 409);
+  assert.equal(task(s, id).status, "open");
+
   // nobody yet: nothing happens
   await s.hire.tick();
   assert.equal(s.em.st.assigns.length, 0);
@@ -629,6 +638,7 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   s.em.apply(emId, { wallet: holder.address.toLowerCase(), score: 99 });
   s.em.apply(emId, { wallet: merchant.address, score: 99 });
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, review: { level: "blocked" } });
+  s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 99, status: "rejected" });
   s.em.apply(emId, { wallet: Wallet.createRandom().address, score: 10 });
   const chosen = s.em.apply(emId, { wallet: good.address, score: 80 });
   await s.hire.tick();
@@ -640,6 +650,12 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   assert.equal(t.worker, good.address);
   assert.equal(t.em!.step, "assigned");
   assert.equal(t.em!.workerWallet, good.address);
+  // not even the assigned worker can complete it on the board and collect the $WIF there
+  sent.length = 0;
+  assert.equal((await board("complete", good.address)).status, 409);
+  assert.equal((await board("claim", good.address)).status, 409);
+  assert.equal(task(s, id).status, "claimed");
+  assert.equal(sent.length, 0);
 
   // the worker delivers; Flat Fee opens it, approves it, the escrow pays, and the $WIF goes to the escrow's receiver
   sent.length = 0;
@@ -705,6 +721,17 @@ test("a delivery without a usable text answer is rejected with the reason, befor
   assert.equal(sent.length, 0);
   assert.equal(task(s, id).status, "claimed");
   assert.equal(task(s, id).em!.rejected.length, 3);
+  assert.equal(task(s, id).em!.rejected[0].reason, s.em.st.rejects[0].notes);
+
+  // a listing that still shows a rejected delivery as pending does not get it rejected twice, nor approved
+  s.em.knobs.staleReject = true;
+  s.em.deliver(emId, { photo: "ipfs://again" });
+  await s.hire.tick();
+  await s.hire.tick();
+  assert.equal(s.em.st.rejects.length, 4);
+  assert.equal(s.em.st.approvals.length, 0);
+  s.em.knobs.staleReject = false;
+  for (const x of s.em.st.subs.get(emId)!) if (x.status === "pending") Object.assign(x, { status: "rejected", agent_verdict: "rejected" });
 
   const good = s.em.deliver(emId, { text_response: { type: "text_response", value: "Four chairs." } });
   await s.hire.tick();
@@ -1085,8 +1112,12 @@ test("the client signs every request so EM's verifier accepts it; the double ref
   const stranger = emClient({ apiUrl: "https://em.test", wallet: Wallet.createRandom(), chainId: CHAIN_ID, fetch: em.fetch });
   await assert.rejects(stranger.getTask(created.id), (e: EmHttpError) => e.status === 404 && !e.retryable);
   // nothing that is not a UUID goes into a path, and a poll path is only ever EM's settlement operations
-  await assert.rejects(api.getTask("../admin"), EmHttpError);
-  await assert.rejects(api.operation("https://elsewhere.test/x"), EmHttpError);
+  const before = em.st.fetches;
+  await assert.rejects(api.getTask("../admin"), (e: EmHttpError) => e.code === "bad_id");
+  await assert.rejects(api.cancel("00000000-0000-0000-0000-00000000000g", "x"), (e: EmHttpError) => e.code === "bad_id");
+  await assert.rejects(api.operation("https://elsewhere.test/x"), (e: EmHttpError) => e.code === "bad_poll");
+  await assert.rejects(api.operation("/api/v1/tasks/" + randomUUID()), (e: EmHttpError) => e.code === "bad_poll");
+  assert.equal(em.st.fetches, before, "a request went out");
   assert.equal(new EmHttpError(503, null, "x").retryable, true);
   assert.equal(new EmHttpError(409, "identity_registering", "x").retryable, true);
   assert.equal(new EmHttpError(409, "idempotency_key_spent", "x").retryable, false);

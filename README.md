@@ -218,10 +218,13 @@ through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/em
   `EM_BOUNTY_USDG` for the worker Flat Fee assigned, never a payment straight to a worker. Before it signs, the escrow,
   operator, token collector, chain and token that Execution Market publishes must equal Flat Fee's own configuration;
   after, the signed authorization is checked again (amount, recipient, receiver, nonce, signer). `EM_BOUNTY_USDG` cannot
-  be above the holder price of a hire, so each escrow is covered by the payment that bought it. A hire that could not
-  run (Execution Market cannot take it, or the merchant holds less USDG than one bounty) is refused before the 402.
-  With `EM_HIRE=on` the merchant wallet holds USDG for the bounties as well as $WIF, and `DATA_DIR` should persist: a
-  task in flight lives there (a lost one is still paid by Execution Market's own release, without the $WIF).
+  be above the holder price of a hire, so a hire's price covers its bounty. A hire Flat Fee can tell would not run
+  (Execution Market cannot take it, its escrow builder cannot build one, the merchant cannot fund one more escrow, or
+  Execution Market refused the last task) is refused before the 402.
+  The merchant also signs, at approval, the payer's release order for that escrow and nothing else. The worker is paid
+  $WIF only for a delivery Flat Fee accepted. With `EM_HIRE=on` the merchant wallet holds USDG for the bounties as well
+  as $WIF, and `DATA_DIR` must persist while hires are open: a task in flight lives there, and the Lightsail recipe
+  loses it on every restart (a lost one is still paid by Execution Market's own release, without the $WIF).
 - A corrupt `state.json` stops the server instead of being overwritten; `npm run reset` clears it.
 - If the RPC cannot be read when a payment arrives, the payer is charged the standard price, never less: a holder in that
   moment gets a 402 at the standard price and can pay it or retry.

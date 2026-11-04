@@ -30,22 +30,29 @@ buyer ◀── GET /api/tasks/:id (the answer) ──┘
    production auth for agents; API keys are off). Body: the buyer's request as instructions, `bounty_usd` =
    `EM_BOUNTY_USDG`, `payment_network` = `NETWORK` (`robinhood` or `robinhood-testnet`), `payment_token` =
    `EM_PAYMENT_TOKEN` (USDG), `evidence_required: ["text_response"]`, `target_executor: "human"`,
-   `deadline_hours` = `EM_DEADLINE_HOURS`. The `Idempotency-Key` is derived from Flat Fee's task id, so a retried publish
-   never creates a second task. Nothing is locked at publish (EM's escrow locks at assignment).
+   `deadline_hours` = `EM_DEADLINE_HOURS`. The `Idempotency-Key` is a UUID made with the task and kept with it, so a
+   retried publish never creates a second task. Nothing is locked at publish (EM's escrow locks at assignment).
 3. **A human applies; Flat Fee assigns and pays the escrow.** Flat Fee picks the applicant EM ranks first
    (`effective_reputation_score`, then the earliest), never one EM flagged (a review note on the application, or
-   `recommended: false`), never one whose escrow lock already failed, never the buyer's own wallet nor the merchant's. It
-   builds the escrow authorization with the official builder, `buildEscrowPreAuth` from `uvd-x402-sdk`, signed by the
-   merchant wallet, and sends it as `X-Payment-Auth` on `POST /api/v1/tasks/{id}/assign`. EM relays it to the
-   facilitator, which locks the bounty in the escrow with the worker as receiver.
+   `recommended: false`), never one that applied as an agent or a robot, never one whose escrow lock already failed,
+   never the buyer's own wallet nor the merchant's. It builds the escrow authorization with the official builder,
+   `buildEscrowPreAuth` from `uvd-x402-sdk`, signed by the merchant wallet, keeps it with the task (with the
+   `paymentInfo` that releases or reclaims it), and sends it as `X-Payment-Auth` on `POST /api/v1/tasks/{id}/assign`. EM
+   relays it to the facilitator, which locks the bounty in the escrow with the worker as receiver. If the assignment's
+   answer is lost, the same authorization is sent again; no second one is signed for another applicant while an earlier
+   one can still be used (until its `validBefore`), so two escrows can never lock for one task.
 4. **The human delivers**, as a `text_response`.
 5. **Flat Fee reviews it.** It reads EM's evidence manifest first (what the delivery holds, not what it says). A
    delivery with no text answer, an empty one or one too long is **rejected with the reason**, without opening it, so
    the worker can deliver again (severity `minor`: no reputation hit). Otherwise Flat Fee opens the evidence; a text that
-   turns out blank is rejected the same way, and any other is kept as the buyer's answer and **approved**: EM releases
-   the escrow to the worker (bounty minus EM's fee).
-6. **Flat Fee sends the worker 50 $WIF** (`WIF_WORKER_REWARD`) from the merchant wallet, to the address the escrow paid
-   on Robinhood Chain, inside the same daily $WIF budget as the cashback. The reward goes out once per task.
+   turns out blank or longer than 2000 bytes is rejected the same way, and any other is kept as the buyer's answer and
+   **approved**, with the payer's release order (an EIP-712 `LifecycleOrder` over the escrow's `paymentInfo`, built with
+   the SDK's `buildLifecycleAuth`), which EM's facilitator asks for where it enforces it: EM releases the escrow to the
+   worker (bounty minus EM's fee). Approvals stop after three failed releases and wait for a person.
+6. **Flat Fee sends the worker 50 $WIF** (`WIF_WORKER_REWARD`) from the merchant wallet, to the wallet the escrow it
+   signed pays (the worker is the one EM names, matched to that escrow), inside the same daily $WIF budget as the
+   cashback. The reward goes out once per task, and only for a delivery Flat Fee accepted, or one EM released on its own
+   that passes the same review; never for one Flat Fee rejected.
 7. **The answer goes back to the buyer** at `GET /api/tasks/:id` (the 201 of `/api/hire` gives that link).
 
 A background loop (`EM_POLL_SECONDS`) drives every open task through these steps, one task at a time, and survives
@@ -59,24 +66,32 @@ before the 402 (asking the agent is not affected):
 
 - Execution Market publishes an escrow for `NETWORK` whose chain, USDG, escrow, operator and token collector are Flat
   Fee's own (and lists `EM_PAYMENT_TOKEN` there, when it lists tokens);
-- `uvd-x402-sdk` has the chain's escrow row, so its builder can sign;
-- the merchant wallet holds at least one bounty of USDG.
+- the escrow builder can build one: a dry run of the same `buildEscrowPreAuth` with a throwaway key (worthless, and
+  never sent) proves the SDK has the chain's escrow row;
+- the merchant wallet holds one bounty of USDG for every hire whose escrow has not landed yet, plus one;
+- Execution Market did not refuse the last publish outright (a 4xx that is not about that one task): after such a
+  refusal, hiring stays paused until a publish goes through again, which in practice means a restart once the cause is
+  fixed.
 
 Until the first check answers, hires are refused too. A check that fails because EM or the RPC is unreachable keeps the
-last answer: a hire paid then is published by the loop once EM answers again.
+last answer (a hire paid then is published by the loop once EM answers again); EM refusing to show its escrow
+parameters (a 4xx) pauses hiring. These checks see what Flat Fee can see before a payment: a publish can still be
+refused for a reason they cannot read, and that buyer is then not refunded, but nobody after them pays.
 
 ### When things do not go to plan
 
 | Situation | What Flat Fee does |
 |---|---|
 | EM is unreachable or slow (each call times out) | records the error on the task and retries on the next pass; nothing changes |
-| EM refuses the task at publish (a 4xx that is not worth retrying) | the task ends `expired`, with EM's reason |
+| EM refuses the task at publish (a 4xx that is not worth retrying) | the task ends `expired`, with EM's reason, and hiring pauses (above) |
 | Nobody is assigned before the task's deadline | cancels it on EM (nothing was locked) and the task ends `expired` |
-| The escrow lock fails for an applicant | the task goes back to `published` on EM; Flat Fee skips that applicant and tries the next |
+| The escrow lock fails for an applicant | the task goes back to `published` on EM; Flat Fee skips that applicant (unless EM says the failure was not theirs) and signs for the next once the failed authorization has expired |
+| The assignment's answer is lost (timeout, 5xx) | Flat Fee keeps its pick; if EM did assign, it goes on; if not, the same authorization is sent again |
 | The delivery fails the review | rejected with the reason; the same worker can deliver again until the deadline |
 | EM expires or cancels the task (no delivery in time) | the task ends `expired`; no $WIF is sent; EM refunds a locked escrow to the merchant |
-| EM releases the escrow on its own (nobody reviewed in time) | Flat Fee reads the delivery, the task ends `done`, and the $WIF reward goes out |
-| The approval is queued (EM answers 202) | Flat Fee follows EM's settlement operation and never approves twice |
+| EM releases the escrow on its own (nobody reviewed in time, or arbitration) | Flat Fee reads the delivery and the task ends `done`; the $WIF goes out only if the delivery passes Flat Fee's review and was not rejected by it |
+| The approval is queued (EM answers 202), or another one is already running | Flat Fee follows EM's settlement operation and does not approve again meanwhile |
+| The release fails | approved again on a later pass, three times at most; an `unresolved` release is never approved again |
 
 The buyer's USDG is not refunded when a task expires, the same as on the board today.
 
@@ -91,8 +106,9 @@ The merchant wallet pays every escrow, so its signature is only ever produced fo
   own tables;
 - the signed authorization is checked again after the SDK builds it: from the merchant, to the token collector, for
   exactly `EM_BOUNTY_USDG` of USDG, with the chosen worker as receiver and a nonce that commits to that payment;
-- `EM_BOUNTY_USDG` can never be above the holder price of a hire, so each escrow is covered by the payment that
-  bought it.
+- `EM_BOUNTY_USDG` can never be above the holder price of a hire, so a hire's price covers its bounty at either tier.
+  The buyer pays `PAY_TO` and the merchant wallet pays the escrow (one wallet in this repo's deploy), so the merchant
+  must hold the USDG: new hires are refused while it cannot fund one more.
 
 ## How Execution Market works, as read in its repository
 
@@ -108,7 +124,7 @@ the agent guide (`dashboard/public/skill.md` and `skill/reference/escrow.md`) an
 | assign + lock | `POST /api/v1/tasks/{id}/assign` with `X-Payment-Auth` | 202 `assigning` (poll the task: `accepted` = locked, back to `published` = lock failed) or 200 |
 | delivery status | `GET /api/v1/tasks/{id}/submissions` | verdicts and `evidence_manifest`, never the evidence |
 | read the delivery | `POST /api/v1/submissions/{id}/evidence/open` | records that the publisher read it |
-| approve | `POST /api/v1/submissions/{id}/approve` | 200, or 202 + `GET /api/v1/settlement-operations/{op}` |
+| approve | `POST /api/v1/submissions/{id}/approve` with `lifecycle_order` | 200, or 202 + `GET /api/v1/settlement-operations/{op}`; `409 SETTLEMENT_OPERATION_IN_FLIGHT` names the operation to follow; `LIFECYCLE_ORDER_REQUIRED` when EM's facilitator enforces the payer's release order (`EM_LIFECYCLE_PAYER_SIGNS`) |
 | reject | `POST /api/v1/submissions/{id}/reject` | `{notes, severity}`; `minor` keeps the worker |
 | cancel | `POST /api/v1/tasks/{id}/cancel` | used only for a task nobody was assigned |
 
@@ -130,7 +146,13 @@ and the escrow builder ship in `uvd-x402-sdk`, already a dependency here.
 
 `EM_HIRE=on` also needs `MERCHANT_PRIVATE_KEY`: the merchant wallet is Flat Fee's identity on Execution Market and the
 payer of every escrow, so it must hold USDG for the bounties as well as $WIF and a little ETH for gas. `WORKER_TOKEN`
-is not needed for hiring in this mode. `DATA_DIR` should persist across restarts: a task in flight lives there.
+is not needed for hiring in this mode.
+
+**`DATA_DIR` must persist while hires are open.** A task in flight, and the escrow authorization signed for it, live
+there. The Lightsail recipe in `deploy/aws` has no volume: every restart or redeploy starts with an empty `DATA_DIR`. A
+hire in flight across one is orphaned: Execution Market still pays its worker (its own release, after the review
+window), but the buyer gets no answer and the worker no $WIF. With that recipe, turn `EM_HIRE` on only for a demo window
+with no redeploy while hires are open, or give it persistent storage first.
 
 ## Tests
 

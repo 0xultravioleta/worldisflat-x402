@@ -13,6 +13,44 @@
   must use $wif on chain on Robinhood Chain and have a flywheel; proof = a repo the judges can see, a demo video and real
   transactions.
 
+## Edit before 12 Nov 2026, 17:30 UTC: hiring through Execution Market (not pasted yet)
+
+The texts below replace the hiring parts of the submitted answers, now that "hire a human" can run through Execution
+Market (`EM_HIRE=on`, [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md)). **Paste them only once all of this is
+true**, or the form would describe something the judges cannot try: Execution Market takes Robinhood Chain escrows, the
+live demo runs with `EM_HIRE=on`, and one real hire on mainnet produced the escrow lock, its release to the worker and
+the worker's $WIF, with those three links added under *Transactions*. Until then the submitted texts further down stay
+as they are. Saúl or c0der edit the form; nothing here was sent.
+
+| field | replace with | length |
+|---|---|---|
+| One liner | `Ask an agent or hire a human via Execution Market, flat USDG fee, $WIF back` | 75 chars (the form allows 80) |
+| What it does | the block below | 589 chars |
+| How it connects to $wif | its point 3) becomes the line below | 137 chars for that point |
+| What happens to $wif | the line below | 150 chars |
+| Why they come back | the line below | 193 chars |
+| Long story, *What's next* | the line below | 140 chars |
+
+```text
+Flat Fee turns an HTTP endpoint into a storefront on Robinhood Chain. Ask the agent a question (live chain data: balances, blocks, gas, $WIF) or hire a human for a small task through Execution Market. The endpoint answers 402 Payment Required with a price in USDG; your wallet or agent signs one EIP-3009 authorization, Ultravioleta's x402 facilitator settles it on chain, and the answer comes back. For a hire, Flat Fee publishes the task on Execution Market, locks the worker's pay in a USDG escrow and approves the answer. Paid calls send $WIF back, holders pay half, workers earn $WIF.
+```
+
+```text
+3) Workers: a human hired through Execution Market whose answer Flat Fee approves is paid by the USDG escrow and receives 50 $WIF on top.
+```
+
+```text
+The merchant sends the payer 10 $WIF after a settled call, up to 500 $WIF a day, and 50 $WIF to each Execution Market worker whose answer it approves.
+```
+
+```text
+Ten paid calls make you a $WIF holder, and holders pay half on every call after that. Execution Market workers return for tasks paid in USDG escrow plus $WIF, which buys them the cheaper price.
+```
+
+```text
+Reputation for every Execution Market task written on Robinhood Chain (ERC-8004), an LLM behind the agent, and subscriptions priced in $WIF.
+```
+
 ## 1. Your team
 
 ```text

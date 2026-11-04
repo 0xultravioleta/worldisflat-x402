@@ -26,6 +26,10 @@ async function loadInfo() {
   document.querySelectorAll("[data-price]").forEach((n) => (n.textContent = info.prices[n.dataset.price].standard));
   document.querySelectorAll("[data-origin]").forEach((n) => (n.textContent = location.origin));
   document.querySelectorAll("[data-caip2]").forEach((n) => (n.textContent = info.network.caip2));
+  if (info.hire?.via === "execution-market") {
+    $("#hire-how").textContent = `Pay once: Flat Fee publishes the task on Execution Market and locks ${info.hire.bounty} USDG for the worker in escrow. A person takes it and answers; Flat Fee approves the answer, the escrow pays them, and they earn $WIF on top.`;
+    $("#board-how").textContent = "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.";
+  }
   const blocked = walletPayBlocked(info);
   for (const b of [$("#ask-pay"), $("#hire-pay")]) {
     b.disabled = !!blocked;
@@ -122,7 +126,10 @@ async function refresh() {
       const li = el("li", {}, el("span", { class: "badge" }, t.status), t.request,
         el("div", { class: "meta" }, `#${t.id} · paid by ${short(t.payer)} · `, link(t.paidTx && info ? `${info.network.explorer}/tx/${t.paidTx}` : null, "payment")));
       if (t.answer) li.append(el("p", { class: "answer" }, t.answer));
-      if (t.status === "open") {
+      if (t.via === "em") {
+        // taken and delivered on Execution Market, not on this board
+        li.append(el("div", { class: "meta" }, `on Execution Market · ${t.em?.status ?? t.em?.step ?? "publishing"}`));
+      } else if (t.status === "open") {
         const b = el("button", { class: "ghost" }, "claim");
         b.onclick = () => taskAction(t.id, "claim");
         li.append(el("div", { class: "row" }, b));

@@ -221,7 +221,8 @@ through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/em
   be above the holder price of a hire, so a hire's price covers its bounty. A hire Flat Fee can tell would not run
   (Execution Market cannot take it, its escrow builder cannot build one, the merchant cannot fund one more escrow, or
   Execution Market refused the last task) is refused before the 402.
-  The merchant also signs, at approval, the payer's release order for that escrow and nothing else. The worker is paid
+  The merchant also signs, at approval and only when Execution Market asks for it, the payer's release order for that
+  escrow. The worker is paid
   $WIF only for a delivery Flat Fee accepted. With `EM_HIRE=on` the merchant wallet holds USDG for the bounties as well
   as $WIF, and `DATA_DIR` must persist while hires are open: a task in flight lives there, and the Lightsail recipe
   loses it on every restart (a lost one is still paid by Execution Market's own release, without the $WIF).

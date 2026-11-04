@@ -34,7 +34,8 @@ buyer ◀── GET /api/tasks/:id (the answer) ──┘
    retried publish never creates a second task. Nothing is locked at publish (EM's escrow locks at assignment).
 3. **A human applies; Flat Fee assigns and pays the escrow.** Flat Fee picks the applicant EM ranks first
    (`effective_reputation_score`, then the earliest), never one EM flagged (a review note on the application, or
-   `recommended: false`), never one that applied as an agent or a robot, never one whose escrow lock already failed,
+   `recommended: false`), only one that applied as a person (directly or through an agent: EM's `human` and
+   `human_via_agent`), never one whose escrow lock already failed,
    never the buyer's own wallet nor the merchant's. It builds the escrow authorization with the official builder,
    `buildEscrowPreAuth` from `uvd-x402-sdk`, signed by the merchant wallet, keeps it with the task (with the
    `paymentInfo` that releases or reclaims it), and sends it as `X-Payment-Auth` on `POST /api/v1/tasks/{id}/assign`. EM
@@ -46,9 +47,12 @@ buyer ◀── GET /api/tasks/:id (the answer) ──┘
    delivery with no text answer, an empty one or one too long is **rejected with the reason**, without opening it, so
    the worker can deliver again (severity `minor`: no reputation hit). Otherwise Flat Fee opens the evidence; a text that
    turns out blank or longer than 2000 bytes is rejected the same way, and any other is kept as the buyer's answer and
-   **approved**, with the payer's release order (an EIP-712 `LifecycleOrder` over the escrow's `paymentInfo`, built with
-   the SDK's `buildLifecycleAuth`), which EM's facilitator asks for where it enforces it: EM releases the escrow to the
-   worker (bounty minus EM's fee). Approvals stop after three failed releases and wait for a person.
+   **approved**: EM releases the escrow to the worker (bounty minus EM's fee). Where EM's facilitator wants the payer's
+   own release order, EM answers `LIFECYCLE_ORDER_REQUIRED` and Flat Fee approves again with it: an EIP-712
+   `LifecycleOrder` over the `paymentInfo` of the escrow that locked, for its `maxAmount`, built with the SDK's
+   `buildLifecycleAuth`. It is not sent unasked, since EM checks any order it receives. A delivery from an executor
+   Flat Fee signed no escrow for is never approved. After three releases EM refused, Flat Fee stops approving and waits
+   for a person (EM being unreachable or busy does not count).
 6. **Flat Fee sends the worker 50 $WIF** (`WIF_WORKER_REWARD`) from the merchant wallet, to the wallet the escrow it
    signed pays (the worker is the one EM names, matched to that escrow), inside the same daily $WIF budget as the
    cashback. The reward goes out once per task, and only for a delivery Flat Fee accepted, or one EM released on its own
@@ -67,11 +71,11 @@ before the 402 (asking the agent is not affected):
 - Execution Market publishes an escrow for `NETWORK` whose chain, USDG, escrow, operator and token collector are Flat
   Fee's own (and lists `EM_PAYMENT_TOKEN` there, when it lists tokens);
 - the escrow builder can build one: a dry run of the same `buildEscrowPreAuth` with a throwaway key (worthless, and
-  never sent) proves the SDK has the chain's escrow row;
+  never sent) proves the SDK has the chain's escrow row, and what it builds passes the same check as a real one;
 - the merchant wallet holds one bounty of USDG for every hire whose escrow has not landed yet, plus one;
 - Execution Market did not refuse the last publish outright (a 4xx that is not about that one task): after such a
-  refusal, hiring stays paused until a publish goes through again, which in practice means a restart once the cause is
-  fixed.
+  refusal, hiring stays paused, across restarts (it is kept in `state.json`), until a publish goes through again or the
+  `EM_*` settings change.
 
 Until the first check answers, hires are refused too. A check that fails because EM or the RPC is unreachable keeps the
 last answer (a hire paid then is published by the loop once EM answers again); EM refusing to show its escrow
@@ -91,7 +95,8 @@ refused for a reason they cannot read, and that buyer is then not refunded, but 
 | EM expires or cancels the task (no delivery in time) | the task ends `expired`; no $WIF is sent; EM refunds a locked escrow to the merchant |
 | EM releases the escrow on its own (nobody reviewed in time, or arbitration) | Flat Fee reads the delivery and the task ends `done`; the $WIF goes out only if the delivery passes Flat Fee's review and was not rejected by it |
 | The approval is queued (EM answers 202), or another one is already running | Flat Fee follows EM's settlement operation and does not approve again meanwhile |
-| The release fails | approved again on a later pass, three times at most; an `unresolved` release is never approved again |
+| The release fails | approved again on a later pass, up to three refusals; an `unresolved` release is never approved again |
+| An old lock failure is still on the task when the next assignment goes out | only a failure recorded after that assignment was sent counts against its applicant |
 
 The buyer's USDG is not refunded when a task expires, the same as on the board today.
 
@@ -124,7 +129,7 @@ the agent guide (`dashboard/public/skill.md` and `skill/reference/escrow.md`) an
 | assign + lock | `POST /api/v1/tasks/{id}/assign` with `X-Payment-Auth` | 202 `assigning` (poll the task: `accepted` = locked, back to `published` = lock failed) or 200 |
 | delivery status | `GET /api/v1/tasks/{id}/submissions` | verdicts and `evidence_manifest`, never the evidence |
 | read the delivery | `POST /api/v1/submissions/{id}/evidence/open` | records that the publisher read it |
-| approve | `POST /api/v1/submissions/{id}/approve` with `lifecycle_order` | 200, or 202 + `GET /api/v1/settlement-operations/{op}`; `409 SETTLEMENT_OPERATION_IN_FLIGHT` names the operation to follow; `LIFECYCLE_ORDER_REQUIRED` when EM's facilitator enforces the payer's release order (`EM_LIFECYCLE_PAYER_SIGNS`) |
+| approve | `POST /api/v1/submissions/{id}/approve` (`lifecycle_order` when asked) | 200, or 202 + `GET /api/v1/settlement-operations/{op}`; `409 SETTLEMENT_OPERATION_IN_FLIGHT` names the operation to follow; `LIFECYCLE_ORDER_REQUIRED` when EM's facilitator wants the payer's release order (`EM_LIFECYCLE_PAYER_SIGNS`); an order that is sent is always checked |
 | reject | `POST /api/v1/submissions/{id}/reject` | `{notes, severity}`; `minor` keeps the worker |
 | cancel | `POST /api/v1/tasks/{id}/cancel` | used only for a task nobody was assigned |
 

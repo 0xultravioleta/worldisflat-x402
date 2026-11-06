@@ -144,6 +144,13 @@ The merchant wallet pays every escrow, so its signature is only ever produced fo
   USDG, escrow, operator and token collector as Flat Fee's own configuration (`EM_ESCROW_ADDRESS`,
   `EM_OPERATOR_ADDRESS`, `EM_TOKEN_COLLECTOR_ADDRESS`), or nothing is signed; the SDK then checks them again against its
   own tables;
+- the escrow's token is read in one place (`escrowToken` in `src/escrow.ts`): `tokens[EM_PAYMENT_TOKEN]` where EM lists
+  it (EM lists there only the tokens it takes payments in), else EM's `usdc` (Base and every USDC network, as before).
+  On Robinhood Chain EM serves `usdc: null` and USDG under `tokens.USDG` (recorded in
+  `test/fixtures/em-payment-config.json`), so that entry is the one read, with its own `domain_name` /
+  `domain_version`, never the `usdc_domain_*` beside the null `usdc`. Its address must be `NETWORK`'s USDG and its
+  domain exactly USDG's (`Global Dollar` / `1`), and a network that names no token at all is refused with a message
+  that says so;
 - the signed authorization is checked again after the SDK builds it: from the merchant, to the token collector, for
   exactly `EM_BOUNTY_USDG` of USDG, with the chosen worker as receiver and a nonce that commits to that payment;
 - `EM_BOUNTY_USDG` can never be above the holder price of a hire, so a hire's price covers its bounty at either tier.

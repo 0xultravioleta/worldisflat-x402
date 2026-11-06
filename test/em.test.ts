@@ -487,7 +487,7 @@ function emDouble() {
   };
 }
 
-// the builder the SDK would be on Robinhood, where it has no escrow row yet: the same wrapper, signed by the signer
+// the builder the SDK would be on Robinhood Chain testnet, where it has no escrow row: the same wrapper, signed by the signer
 const testBuild: BuildPreAuth = async (signer, p) => {
   const n = p.networkConfig;
   const nowS = Math.floor(clock() / 1000);
@@ -594,7 +594,7 @@ async function setup(
     merchant: merchant.address,
     paymentAuth: (pc, worker, deadline) => escrowPaymentAuth({ cfg, wallet: merchant, build: opts.build ?? testBuild }, pc, worker, deadline),
     releaseOrder: (pi) => releaseOrder({ cfg, wallet: merchant }, pi),
-    // the SDK has no Robinhood row yet; the tests that are not about that stand in for its builder
+    // the SDK has no Robinhood testnet row; the tests that are not about that stand in for its builder
     ready: (pc) => escrowReadiness(cfg, pc, opts.readyBuild ?? opts.build ?? testBuild),
     usdgBalance: async () => merchantUsdg,
     log: (m) => logs.push(m),
@@ -1560,7 +1560,7 @@ test("the merchant signs no escrow EM publishes for other contracts, and nothing
     const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "x" }) });
     assert.equal(next.status, 503, what);
   }
-  // the SDK's own builder has no Robinhood row yet: it refuses to sign, so nothing is assigned either
+  // the SDK's own builder has no Robinhood testnet row: it refuses to sign, so nothing is assigned either
   const s = await setup({}, { build: buildEscrowPreAuth, readyBuild: testBuild });
   const r = await buy(s.app, buyer, "Water the plants");
   s.em.apply(r.body.task.em.taskId, { wallet: Wallet.createRandom().address });
@@ -1582,7 +1582,7 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   };
   // before the first check answers
   await refusedBefore402(await setup({}, { check: false }), /not been checked yet/);
-  // the SDK's own builder cannot build a Robinhood escrow yet (a dry run with a throwaway key says so)
+  // the SDK's own builder cannot build a Robinhood testnet escrow (a dry run with a throwaway key says so)
   await refusedBefore402(await setup({}, { readyBuild: buildEscrowPreAuth }), /escrow builder cannot build an escrow on robinhood-testnet/);
   // EM lists its tokens there and USDG is not one of them
   const t = await setup({}, { check: false });

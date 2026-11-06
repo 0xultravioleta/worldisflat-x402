@@ -27,7 +27,7 @@
     "ethers": "6.17.0",
     "hono": "4.13.13",
     "tsx": "4.23.15",
-    "uvd-x402-sdk": "2.106.0"
+    "uvd-x402-sdk": "2.114.0"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

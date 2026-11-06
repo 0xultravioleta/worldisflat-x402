@@ -87,10 +87,11 @@ the $WIF cashback); then:
    anyway, Flat Fee closes the task there instead of asking for more work.
 4. Flat Fee sends the human **50 $WIF** on Robinhood Chain, and the buyer reads the answer at `GET /api/tasks/:id`.
 
-It is **off by default, and off on the live demo**: Execution Market does not take Robinhood Chain tasks yet (its
-escrow is not deployed there, and `uvd-x402-sdk` has no Robinhood row in its escrow tables). Until both exist, a server
-with `EM_HIRE=on` answers `503` to a hire before the `402`, so nobody pays for a task that cannot run. The design, the
-edge cases and the Execution Market API it uses: [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md).
+It is **off by default, and off on the live demo** until it is turned on there. Execution Market publishes its
+Robinhood Chain escrow (USDG), and `uvd-x402-sdk` builds escrows there from 2.114.0, the version pinned here. With
+`EM_HIRE=on`, a server answers `503` to a hire before the `402` whenever Execution Market or the merchant wallet cannot
+carry it, so nobody pays for a task that cannot run. The design, the edge cases and the Execution Market API it uses:
+[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md).
 
 ## Try it (judges: under 5 minutes, no wallet, no funds)
 

@@ -5,11 +5,14 @@ keep its own task board for that: it acts as an **agent on [Execution Market](ht
 task there, locks the worker's pay in a USDG escrow on Robinhood Chain, approves the delivery, and adds the $WIF reward
 on top. With `EM_HIRE` off (the default), everything works exactly as before: the task goes on Flat Fee's own board.
 
-The switch exists because Execution Market does not take Robinhood Chain tasks yet: its escrow (x402r) is not deployed
-on Robinhood, its task API takes only `USDC` as `payment_token` today, and `uvd-x402-sdk` has no Robinhood row in its
-escrow tables (checked on 2.106.0, the version pinned here, and on 2.111.0, the latest on npm on 2026-11-04). Until all
-of that exists, a server with the knob on answers `503` to a hire **before** the 402 (see below), so nobody pays for a
-task that cannot run, and the knob stays off on the live demo.
+The switch exists because hiring through Execution Market needs all of it at once on Robinhood Chain: EM taking the
+task and publishing its x402r escrow there, and `uvd-x402-sdk` able to build that escrow. EM's production
+payment-config lists the Robinhood Chain escrow with USDG (recorded on 2026-11-06 in
+`test/fixtures/em-payment-config.json`), and the SDK has Robinhood Chain (4663) rows from 2.114.0, the version pinned
+here (2.106.0 had none, so every hire was refused). Robinhood Chain testnet (46630) has no escrow: EM's operator has no
+code there and the SDK has no row for it. Whenever a check fails, a server with the knob on answers `503` to a hire
+**before** the 402 (see below), so nobody pays for a task that cannot run. The knob stays off on the live demo until
+it is turned on there.
 
 ## The flow
 
@@ -219,6 +222,7 @@ double checks every ERC-8128 signature with the SDK's verifier in EM's own postu
 authorization the way the facilitator would before locking it (signer, amount, token collector, receiver, nonce), and
 plays publish (and its refusals, in the shapes EM's routes write them), applications, assignment (direct and queued),
 delivery, approval (direct and queued), rejection, EM's stranded-escrow sweep (with EM-7 on, as in production, and
-off), EM's own release and expiry, and the timeouts. The SDK cannot build a Robinhood escrow yet, so the tests stand in for its
-builder with one that signs the same wrapper; Flat Fee's checks before and after the builder are the real ones, the
-SDK's real builder runs on Base through Flat Fee's signer, and on Robinhood it is shown to refuse.
+off), EM's own release and expiry, and the timeouts. The double plays Robinhood Chain testnet, where the SDK has no escrow
+row, so those tests stand in for its builder with one that signs the same wrapper; Flat Fee's checks before and after
+the builder are the real ones, and on the testnet the SDK's real builder is shown to refuse. `test/emtoken.test.ts` runs
+the SDK's real builder through Flat Fee's signer on EM's recorded Base and Robinhood Chain entries, offline.

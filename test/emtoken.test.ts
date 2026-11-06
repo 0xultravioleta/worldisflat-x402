@@ -200,3 +200,32 @@ test("a usdc that is USDG, where EM lists its tokens without USDG, is refused be
   await escrowReadiness(cfg, withRobinhood({ usdc: CHAINS.robinhood.usdg, usdc_domain_name: "Global Dollar", usdc_domain_version: "1", tokens: undefined }), s.build);
   assert.equal(s.calls.length, 1);
 });
+
+test("Robinhood as EM serves it, through the SDK's own builder: ready, and the merchant locks 0.20 USDG under Global Dollar / 1", async () => {
+  // the dry run before the 402 passes on EM's real entry with the real builder (uvd-x402-sdk 2.114.0 has the 4663 rows)
+  assert.equal(await escrowReadiness(cfg, RECORDED), null);
+  for (const pc of [RECORDED, withRobinhood({ usdc_domain_name: "USD Coin", usdc_domain_version: "2" })]) {
+    const signed = await escrowPaymentAuth({ cfg, wallet: merchant }, pc, worker, deadline);
+    const w = JSON.parse(signed.auth);
+    const a = w.payload.authorization;
+    const pi = w.payload.paymentInfo;
+    assert.equal(w.scheme, "escrow");
+    assert.equal(w.paymentRequirements.network, "eip155:4663");
+    assert.equal(getAddress(pi.token), CHAINS.robinhood.usdg);
+    assert.equal(getAddress(pi.receiver), getAddress(worker));
+    assert.equal(getAddress(a.to), getAddress(RH.token_collector));
+    // the bounty, gross: EM takes its fee out of it at release
+    assert.equal(cfg.em.bounty, 200_000n);
+    assert.equal(String(a.value), "200000");
+    assert.equal(String(pi.maxAmount), "200000");
+    const domain = { name: "Global Dollar", version: "1", chainId: 4663, verifyingContract: CHAINS.robinhood.usdg };
+    assert.equal(verifyTypedData(domain, { ReceiveWithAuthorization: RECEIVE }, a, w.payload.signature), merchant.address);
+    assert.equal(a.nonce, computeEscrowNonce(4663, RH.escrow, ESCROW_PAYMENT_INFO_TYPEHASH, pi));
+  }
+  // why Flat Fee reads the token itself: EM's entry handed to the SDK as it is has no usdc, and the SDK refuses it
+  const params = { network: "robinhood", payerWallet: merchant.address, workerWallet: worker, bountyAtomic: "200000", reviewDeadlineSec: deadline };
+  await assert.rejects(buildEscrowPreAuth(typedDataSigner(merchant), { ...params, networkConfig: { ...RH, payment_info_typehash: RECORDED.escrow.payment_info_typehash } }), /missing usdc/);
+  // and h2a.py's USDC fallback, were it handed over as the domain, would be refused too
+  const n = escrowNetwork(cfg, RECORDED);
+  await assert.rejects(buildEscrowPreAuth(typedDataSigner(merchant), { ...params, networkConfig: { ...n, usdc_domain_name: "USD Coin", usdc_domain_version: "2" } }), /token's on-chain domain is "Global Dollar" \/ "1"/);
+});

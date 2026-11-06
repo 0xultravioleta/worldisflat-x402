@@ -1,4 +1,5 @@
-import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js";
+import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
+import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=2";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -14,28 +15,49 @@ let info;
 
 async function loadInfo() {
   info = await (await fetch("/api/info")).json();
+  // amounts and facts from the server; a value it does not send keeps the static text
+  document.querySelectorAll("[data-usdg]").forEach((n) => {
+    const v = valueAt(info, n.dataset.usdg);
+    if (v != null) n.textContent = usdg(v);
+  });
+  document.querySelectorAll("[data-info]").forEach((n) => {
+    const v = valueAt(info, n.dataset.info);
+    if (v != null) n.textContent = v;
+  });
+  // nothing about $WIF without a token, no cashback line at 0, no worker reward at 0
+  document.querySelectorAll("[data-needs]").forEach((n) => (n.hidden = isAbsent(valueAt(info, n.dataset.needs))));
+  document.querySelectorAll("[data-origin]").forEach((n) => (n.textContent = location.origin));
   const f = $("#facts");
   f.replaceChildren();
-  const add = (k, v) => f.append(el("div", {}, el("dt", {}, k), el("dd", {}, v)));
-  add("network", `${info.network.label} · ${info.network.caip2}`);
-  add("ask an agent", `${info.prices.ask.standard} USDG · ${info.prices.ask.holder} for holders`);
-  add("hire a human", `${info.prices.hire.standard} USDG · ${info.prices.hire.holder} for holders`);
-  if (info.wif.token) add("$WIF", `${info.wif.cashback} back per call · holder ≥ ${info.wif.holderMin}`);
-  add("paid to", link(info.payToUrl, short(info.payTo)));
-  add("facilitator", info.facilitator.replace(/^https?:\/\//, ""));
-  document.querySelectorAll("[data-price]").forEach((n) => (n.textContent = info.prices[n.dataset.price].standard));
-  document.querySelectorAll("[data-origin]").forEach((n) => (n.textContent = location.origin));
-  document.querySelectorAll("[data-caip2]").forEach((n) => (n.textContent = info.network.caip2));
-  if (info.hire?.via === "execution-market") {
-    $("#hire-how").textContent = `Pay once: Flat Fee publishes the task on Execution Market and locks ${info.hire.bounty} USDG for the worker in escrow. A person takes it and answers; Flat Fee approves the answer, the escrow pays them, and they earn $WIF on top.`;
-    $("#board-how").textContent = "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.";
-  }
+  const fact = (k, v) => f.append(el("dt", {}, k), el("dd", {}, v));
+  fact("Network", `${info.network.label} · ${info.network.caip2}`);
+  fact("Paid to", link(info.payToUrl, short(info.payTo)));
+  fact("Facilitator", info.facilitator.replace(/^https?:\/\//, ""));
+
+  // escrow is said to run only when this server hires through Execution Market (page-state.js)
+  const copy = escrowCopy(info);
+  document.body.dataset.escrow = copy.escrow;
+  $("#escrow-pill").textContent = copy.pill;
+  $("#hire-status-label").textContent = copy.statusLabel;
+  $("#hire-status-text").textContent = copy.statusText;
+  $("#escrow-bounty").hidden = !copy.bounty;
+  if (copy.bounty) $("#escrow-bounty-amount").textContent = copy.bounty;
+  $("#escrow-foot").textContent = copy.foot;
+  $("#board-meta").textContent = copy.boardMeta;
+  $("#board-how").textContent = copy.boardHow;
+
   const blocked = walletPayBlocked(info);
   for (const b of [$("#ask-pay"), $("#hire-pay")]) {
     b.disabled = !!blocked;
     if (blocked) b.title = blocked;
   }
-  if (blocked) show($("#ask-out"), blocked);
+  if (blocked) {
+    // a local fork (npm run demo): the demo already paid; what is left to try is the task board
+    $("#fork-notice").textContent = blocked;
+    $("#fork-notice").hidden = false;
+    $("#board").open = true;
+    $("#calls").open = true;
+  }
 }
 
 function show(out, value, bad = false) {
@@ -46,7 +68,7 @@ function show(out, value, bad = false) {
 
 async function wallet() {
   const eth = window.ethereum;
-  if (!eth) throw new Error("No browser wallet found. Use the terminal flow below (npm run buy).");
+  if (!eth) throw new Error("No browser wallet found. To pay from a terminal, see “For agents and developers” below.");
   const [from] = await eth.request({ method: "eth_requestAccounts" });
   const hex = "0x" + info.network.chainId.toString(16);
   if ((await eth.request({ method: "eth_chainId" })) !== hex) {
@@ -64,29 +86,37 @@ async function wallet() {
   return { eth, from };
 }
 
-/** 402 -> sign in the wallet -> retry with X-PAYMENT */
+/** 402 -> sign in the wallet -> retry with X-PAYMENT; true once a paid call answered 2xx */
 async function payAndCall(path, body, out, button) {
   const blocked = walletPayBlocked(info);
-  if (blocked) return show(out, blocked, true);
+  if (blocked) {
+    show(out, blocked, true);
+    return false;
+  }
   button.disabled = true;
   try {
     const { eth, from } = await wallet();
     const init = { method: "POST", headers: { "content-type": "application/json", "x-payer": from }, body: JSON.stringify(body) };
     const first = await fetch(path, init);
-    if (first.status !== 402) return show(out, await first.json(), !first.ok);
+    if (first.status !== 402) {
+      show(out, await first.json(), !first.ok);
+      return false;
+    }
     const terms = await first.json();
     const accept = terms.accepts[0];
-    show(out, `Sign ${Number(accept.amount) / 1e6} USDG to ${short(accept.payTo)} in your wallet…`);
+    show(out, `Sign ${usdg(Number(accept.amount) / 1e6)} USDG to ${short(accept.payTo)} in your wallet…`);
     const typed = typedDataFor(accept, from);
     const signature = await eth.request({ method: "eth_signTypedData_v4", params: [from, JSON.stringify({ ...typed, types: { EIP712Domain: [
       { name: "name", type: "string" }, { name: "version", type: "string" }, { name: "chainId", type: "uint256" }, { name: "verifyingContract", type: "address" },
     ], ...typed.types } })] });
-    show(out, "Settling on Robinhood Chain…");
+    show(out, `Settling on ${info.network.label}…`);
     const paid = await fetch(path, { ...init, headers: { ...init.headers, "X-PAYMENT": paymentHeader(accept, typed, signature) } });
     show(out, await paid.json(), !paid.ok);
     refresh();
+    return paid.ok;
   } catch (e) {
     show(out, e.message || String(e), true);
+    return false;
   } finally {
     button.disabled = false;
   }
@@ -97,7 +127,10 @@ $("#ask-quote").onclick = async () => {
   show($("#ask-out"), { status: r.status, body: await r.json() }, r.status !== 402);
 };
 $("#ask-pay").onclick = (e) => payAndCall("/api/ask", { question: $("#question").value }, $("#ask-out"), e.currentTarget);
-$("#hire-pay").onclick = (e) => payAndCall("/api/hire", { request: $("#request").value }, $("#hire-out"), e.currentTarget);
+$("#hire-pay").onclick = async (e) => {
+  // a paid hire lands on the task board: open it so the buyer sees the task and, later, the answer
+  if (await payAndCall("/api/hire", { request: $("#request").value }, $("#hire-out"), e.currentTarget)) $("#board").open = true;
+};
 
 async function taskAction(id, action, extra = {}) {
   const r = await fetch(`/api/tasks/${id}/${action}`, {
@@ -109,39 +142,57 @@ async function taskAction(id, action, extra = {}) {
   refresh();
 }
 
+function taskItem(t, drafts) {
+  const body = el("div", {},
+    el("p", { class: "q" }, el("span", { class: "badge" }, t.status), t.request),
+    el("p", { class: "tm" }, `#${t.id} · paid by ${short(t.payer)} · `, link(t.paidTx && info ? `${info.network.explorer}/tx/${t.paidTx}` : null, "payment")));
+  if (t.answer) body.append(el("p", { class: "answer" }, t.answer));
+  const li = el("li", {}, body);
+  if (t.via === "em") {
+    // taken and delivered on Execution Market, not on this board
+    body.append(el("p", { class: "tm" }, `on Execution Market · ${t.em?.status ?? t.em?.step ?? "publishing"}`));
+  } else if (t.status === "open") {
+    const b = el("button", { class: "btn", type: "button" }, "Claim");
+    b.onclick = () => taskAction(t.id, "claim");
+    li.append(b);
+  } else if (t.status === "claimed") {
+    const input = el("input", { "aria-label": "Your answer", placeholder: "your answer", "data-task": t.id });
+    input.value = drafts.get(t.id) ?? "";
+    const b = el("button", { class: "btn", type: "button" }, "Complete");
+    b.onclick = () => taskAction(t.id, "complete", { answer: input.value });
+    li.append(el("div", { class: "row" }, input, b));
+  }
+  return li;
+}
+
 async function refresh() {
   const [ledger, tasks] = await Promise.all([(await fetch("/api/ledger")).json(), (await fetch("/api/tasks")).json()]);
-  $("#ledger tbody").replaceChildren(
-    ...(ledger.length ? ledger.map((e) => el("tr", {},
-      el("td", {}, new Date(e.at).toLocaleTimeString()),
-      el("td", {}, e.kind === "ask" ? "ask" : `hire #${e.taskId}`),
-      el("td", { class: "mono" }, short(e.payer)),
-      el("td", {}, `${e.price} USDG${e.tier === "holder" ? " (holder)" : ""}`),
-      el("td", { class: "mono" }, link(e.settleUrl, short(e.settleTx))),
-      el("td", { class: "mono" }, e.cashbackTx ? link(e.cashbackUrl, short(e.cashbackTx)) : e.cashbackError ? "failed" : "—"),
-    )) : [el("tr", {}, el("td", { colspan: "6", class: "muted" }, "No paid calls yet."))]),
+  $("#ledger").replaceChildren(
+    // rows of the role="table" in index.html; data-k labels the cells on a phone, where the header row is hidden
+    ...(ledger.length ? ledger.map((e) => el("li", { role: "row" },
+      el("span", { role: "cell" }, new Date(e.at).toLocaleTimeString()),
+      el("span", { role: "cell" }, e.kind === "ask" ? "ask" : `hire #${e.taskId}`),
+      el("span", { role: "cell", class: "mono", "data-k": "payer" }, short(e.payer)),
+      el("span", { role: "cell" }, `${usdg(e.price)} USDG${e.tier === "holder" ? " (holder)" : ""}`),
+      el("span", { role: "cell", class: "mono", "data-k": "settlement" }, link(e.settleUrl, short(e.settleTx))),
+      el("span", { role: "cell", class: "mono", "data-k": "$WIF back" }, e.cashbackTx ? link(e.cashbackUrl, short(e.cashbackTx)) : e.cashbackError ? "failed" : "—"),
+    )) : [el("li", { class: "empty", role: "row" }, el("span", { role: "cell" }, "No paid calls yet."))]),
   );
+  // the board is redrawn every few seconds: keep a worker's half-typed answer, the focus and the selection in it
+  const drafts = new Map([...document.querySelectorAll("#tasks input[data-task]")].map((i) => [i.dataset.task, i.value]));
+  const active = document.activeElement?.closest?.("#tasks") ? document.activeElement : null;
+  const focused = active?.dataset.task;
+  const selection = active ? [active.selectionStart, active.selectionEnd] : null;
   $("#tasks").replaceChildren(
-    ...(tasks.length ? tasks.map((t) => {
-      const li = el("li", {}, el("span", { class: "badge" }, t.status), t.request,
-        el("div", { class: "meta" }, `#${t.id} · paid by ${short(t.payer)} · `, link(t.paidTx && info ? `${info.network.explorer}/tx/${t.paidTx}` : null, "payment")));
-      if (t.answer) li.append(el("p", { class: "answer" }, t.answer));
-      if (t.via === "em") {
-        // taken and delivered on Execution Market, not on this board
-        li.append(el("div", { class: "meta" }, `on Execution Market · ${t.em?.status ?? t.em?.step ?? "publishing"}`));
-      } else if (t.status === "open") {
-        const b = el("button", { class: "ghost" }, "claim");
-        b.onclick = () => taskAction(t.id, "claim");
-        li.append(el("div", { class: "row" }, b));
-      } else if (t.status === "claimed") {
-        const input = el("input", { placeholder: "your answer" });
-        const b = el("button", {}, "complete");
-        b.onclick = () => taskAction(t.id, "complete", { answer: input.value });
-        li.append(el("div", { class: "row" }, input, b));
-      }
-      return li;
-    }) : [el("li", { class: "muted" }, "No tasks yet. Hire a human above.")]),
+    ...(tasks.length ? tasks.map((t) => taskItem(t, drafts)) : [el("li", { class: "empty" }, "No tasks yet. Hire a human above.")]),
   );
+  if (focused) {
+    const input = [...document.querySelectorAll("#tasks input[data-task]")].find((i) => i.dataset.task === focused);
+    if (input) {
+      input.focus();
+      input.setSelectionRange(selection[0] ?? input.value.length, selection[1] ?? input.value.length);
+    }
+  }
 }
 
 await loadInfo();

@@ -151,8 +151,22 @@ function emDouble() {
     createRefusal: null as null | { status: number; body: Any },
     /** EM-7 (EM_REJECT_AFTER_READ_DISPUTE, on in production): the sweep keeps the escrow of a delivery read before its rejection */
     em7: true,
-    /** escrow parameters EM publishes, changed per test */
-    network: { chain_id: CHAIN_ID, usdc: USDG, ...{ escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector } } as Any,
+    /**
+     * escrow parameters EM publishes, changed per test, in the shape it serves for Robinhood Chain
+     * (test/fixtures/em-payment-config.json): no `usdc` and USDG under `tokens`. At the top, the domain h2a.py falls back
+     * to when its USDC lookup finds none (USD Coin / 2; production serves Global Dollar / 1 there today): stricter than
+     * production, so an escrow signed under the top-level domain instead of tokens.USDG's fails every hire here
+     */
+    network: {
+      chain_id: CHAIN_ID,
+      operator: CONTRACTS.operator,
+      escrow: CONTRACTS.escrow,
+      token_collector: CONTRACTS.tokenCollector,
+      usdc: null,
+      usdc_domain_name: "USD Coin",
+      usdc_domain_version: "2",
+      tokens: { USDG: { address: USDG, domain_name: "Global Dollar", domain_version: "1", decimals: 6 } },
+    } as Any,
   };
   const app = new Hono<{ Variables: { wallet: string } }>();
   app.get("/api/v1/auth/erc8128/nonce", (c) => {
@@ -473,7 +487,7 @@ function emDouble() {
   };
 }
 
-// the builder the SDK would be on Robinhood, where it has no escrow row yet: the same wrapper, signed by the signer
+// the builder the SDK would be on Robinhood Chain testnet, where it has no escrow row: the same wrapper, signed by the signer
 const testBuild: BuildPreAuth = async (signer, p) => {
   const n = p.networkConfig;
   const nowS = Math.floor(clock() / 1000);
@@ -580,7 +594,7 @@ async function setup(
     merchant: merchant.address,
     paymentAuth: (pc, worker, deadline) => escrowPaymentAuth({ cfg, wallet: merchant, build: opts.build ?? testBuild }, pc, worker, deadline),
     releaseOrder: (pi) => releaseOrder({ cfg, wallet: merchant }, pi),
-    // the SDK has no Robinhood row yet; the tests that are not about that stand in for its builder
+    // the SDK has no Robinhood testnet row; the tests that are not about that stand in for its builder
     ready: (pc) => escrowReadiness(cfg, pc, opts.readyBuild ?? opts.build ?? testBuild),
     usdgBalance: async () => merchantUsdg,
     log: (m) => logs.push(m),
@@ -1524,7 +1538,10 @@ test("the merchant signs no escrow EM publishes for other contracts, and nothing
     ["escrow", { escrow: Wallet.createRandom().address }],
     ["operator", { operator: Wallet.createRandom().address }],
     ["token collector", { token_collector: Wallet.createRandom().address }],
-    ["token", { usdc: Wallet.createRandom().address }],
+    // a `usdc` beside a listed USDG does not change the token: EM names another one only without USDG in its list
+    ["token", { usdc: Wallet.createRandom().address, usdc_domain_name: "Global Dollar", usdc_domain_version: "1", tokens: undefined }],
+    ["USDG", { tokens: { USDG: { address: Wallet.createRandom().address, domain_name: "Global Dollar", domain_version: "1" } } }],
+    ["USDG's domain", { tokens: { USDG: { address: USDG, domain_name: "USD Coin", domain_version: "2" } } }],
     ["chain", { chain_id: 4663 }],
   ];
   for (const [what, change] of cases) {
@@ -1537,13 +1554,13 @@ test("the merchant signs no escrow EM publishes for other contracts, and nothing
     s.em.apply(emId, { wallet: Wallet.createRandom().address });
     await s.hire.tick();
     assert.equal(s.em.st.assigns.length, 0, what);
-    assert.match(task(s, r.body.task.id).em!.lastError!, /not the one Flat Fee is configured with|another chain/, what);
+    assert.match(task(s, r.body.task.id).em!.lastError!, /not the one Flat Fee is configured with|another chain|is not USDG's/, what);
     assert.equal(task(s, r.body.task.id).em!.step, "published", what);
     // and nobody else pays for a hire until it is Flat Fee's again
     const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "x" }) });
     assert.equal(next.status, 503, what);
   }
-  // the SDK's own builder has no Robinhood row yet: it refuses to sign, so nothing is assigned either
+  // the SDK's own builder has no Robinhood testnet row: it refuses to sign, so nothing is assigned either
   const s = await setup({}, { build: buildEscrowPreAuth, readyBuild: testBuild });
   const r = await buy(s.app, buyer, "Water the plants");
   s.em.apply(r.body.task.em.taskId, { wallet: Wallet.createRandom().address });
@@ -1565,7 +1582,7 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   };
   // before the first check answers
   await refusedBefore402(await setup({}, { check: false }), /not been checked yet/);
-  // the SDK's own builder cannot build a Robinhood escrow yet (a dry run with a throwaway key says so)
+  // the SDK's own builder cannot build a Robinhood testnet escrow (a dry run with a throwaway key says so)
   await refusedBefore402(await setup({}, { readyBuild: buildEscrowPreAuth }), /escrow builder cannot build an escrow on robinhood-testnet/);
   // EM lists its tokens there and USDG is not one of them
   const t = await setup({}, { check: false });
@@ -1609,7 +1626,19 @@ const paymentConfig = (network: Any = {}) => ({
     min_fee_bps: 0,
     max_fee_bps: 1800,
     tier_timings: { micro: { pre: 3600, auth: 7200, refund: 86400 } },
-    networks: { "robinhood-testnet": { chain_id: CHAIN_ID, usdc: USDG, escrow: CONTRACTS.escrow, operator: CONTRACTS.operator, token_collector: CONTRACTS.tokenCollector, ...network } },
+    // a network that names its token as `usdc` (Base's shape), with USDG's domain: the double above serves the other one
+    networks: {
+      "robinhood-testnet": {
+        chain_id: CHAIN_ID,
+        usdc: USDG,
+        usdc_domain_name: "Global Dollar",
+        usdc_domain_version: "1",
+        escrow: CONTRACTS.escrow,
+        operator: CONTRACTS.operator,
+        token_collector: CONTRACTS.tokenCollector,
+        ...network,
+      },
+    },
   },
 });
 
@@ -1630,13 +1659,24 @@ test("escrowNetwork takes EM's parameters only when they are Flat Fee's own, any
   assert.equal(n.usdc_domain_name, "Global Dollar");
   assert.equal(n.usdc_domain_version, "1");
   assert.deepEqual(n.tiers, { micro: { pre: 3600, auth: 7200, refund: 86400 } });
-  // USDG may come in the tokens map instead of `usdc`
-  assert.equal(escrowNetwork(emCfg, paymentConfig({ usdc: undefined, tokens: { USDG: { address: USDG } } })).usdc, USDG);
+  // USDG may come in the tokens map instead of `usdc`, with its own domain
+  const listed = { USDG: { address: USDG, domain_name: "Global Dollar", domain_version: "1" } };
+  assert.equal(escrowNetwork(emCfg, paymentConfig({ usdc: undefined, tokens: listed })).usdc, USDG);
+  assert.equal(escrowNetwork(emCfg, paymentConfig({ usdc: null, usdc_domain_name: "USD Coin", usdc_domain_version: "2", tokens: listed })).usdc_domain_name, "Global Dollar");
+  // and where EM lists USDG, that is the token, whatever `usdc` says beside it
+  assert.equal(escrowNetwork(emCfg, paymentConfig({ usdc: "", tokens: listed })).usdc, USDG);
+  assert.equal(escrowNetwork(emCfg, paymentConfig({ usdc: MAINNET_USDG, usdc_domain_name: "USD Coin", tokens: listed })).usdc_domain_name, "Global Dollar");
   const refused: (Any | null)[] = [
     paymentConfig({ chain_id: 4663 }),
     paymentConfig({ chain_id: "46630" }),
     paymentConfig({ usdc: MAINNET_USDG }),
     paymentConfig({ usdc: undefined }),
+    paymentConfig({ usdc: null, tokens: {} }),
+    paymentConfig({ usdc: "" }),
+    paymentConfig({ usdc_domain_name: "USD Coin" }),
+    paymentConfig({ usdc_domain_version: "2" }),
+    paymentConfig({ usdc_domain_name: undefined }),
+    paymentConfig({ usdc: null, tokens: { USDG: { address: USDG } } }),
     paymentConfig({ escrow: "0x12" }),
     paymentConfig({ operator: null }),
     paymentConfig({ token_collector: CONTRACTS.escrow }),

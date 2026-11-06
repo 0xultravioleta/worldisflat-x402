@@ -45,25 +45,60 @@ export function typedDataSigner(wallet: BaseWallet): EscrowPreAuthSigner {
   };
 }
 
+/** the token an escrow is paid in, as one network of Execution Market's payment-config names it, and its EIP-712 domain */
+export interface EscrowToken {
+  address: unknown;
+  domainName: unknown;
+  domainVersion: unknown;
+}
+
+/**
+ * The token `network`'s escrow is paid in, read from that network's entry of Execution Market's payment-config: the
+ * payment token `symbol` from `tokens`, with that token's own `domain_name` / `domain_version`, where EM lists it (EM
+ * lists there only the tokens it takes payments in); else its `usdc` with `usdc_domain_name` / `usdc_domain_version`
+ * (Base and every USDC network, as before). Robinhood Chain is the first kind: EM serves `usdc: null` there and USDG
+ * under `tokens.USDG`. The top-level `usdc_domain_*` beside that null `usdc` is whatever h2a.py's USDC lookup found
+ * (Global Dollar / 1 in production on 2026-11-06, through its SDK's registry; its last resort is USD Coin / 2), so it
+ * is never read for a listed token. A network that names neither, or lists `symbol` twice in two cases, is refused:
+ * nothing can be signed for it. What it returns is EM's word only: escrowNetwork checks it against Flat Fee's own.
+ */
+export function escrowToken(network: string, n: Record<string, unknown>, symbol: string): EscrowToken {
+  const want = symbol.toUpperCase();
+  const listed = n.tokens && typeof n.tokens === "object" ? Object.entries(n.tokens as Record<string, unknown>).filter(([k]) => k.toUpperCase() === want) : [];
+  // two entries for one symbol (USDG and usdg) leave nobody to say which is the token: neither is taken, nor the usdc
+  if (listed.length > 1) throw new EscrowRefused(`Execution Market lists ${symbol} more than once on ${network}: its escrow there names no single token`);
+  if (listed.length === 1) {
+    const t = listed[0][1] as Record<string, unknown> | null;
+    return { address: t?.address, domainName: t?.domain_name, domainVersion: t?.domain_version };
+  }
+  if (n.usdc !== null && n.usdc !== undefined) return { address: n.usdc, domainName: n.usdc_domain_name, domainVersion: n.usdc_domain_version };
+  throw new EscrowRefused(`Execution Market does not take ${symbol} on ${network}: its escrow there names no token to pay it in (no ${symbol} in its tokens, and no usdc)`);
+}
+
 /**
  * This network's escrow as Execution Market publishes it (GET /api/v1/h2a/payment-config), refused unless its chain,
- * token, escrow, operator and token collector are the ones Flat Fee is configured with. The USDG domain is Flat Fee's
- * own (USDG's on-chain version() reverts, so nobody can read it from the token).
+ * token, escrow, operator and token collector are the ones Flat Fee is configured with, and the domain EM gives its
+ * token is USDG's (Flat Fee's own: USDG's on-chain version() reverts, so nobody can read it from the token). The
+ * escrow is then built with that token (escrowToken: on Robinhood Chain, EM's tokens.USDG).
  */
 export function escrowNetwork(cfg: Config & { em: EmConfig }, paymentConfig: unknown): EscrowNetworkConfig {
   const escrow = (paymentConfig as { escrow?: Record<string, unknown> } | null)?.escrow;
   const n = (escrow?.networks as Record<string, Record<string, unknown>> | undefined)?.[cfg.chain.name];
   if (!escrow || !n) throw new EscrowRefused(`Execution Market publishes no escrow for ${cfg.chain.name}`);
   if (n.chain_id !== cfg.chain.chainId) throw new EscrowRefused(`Execution Market's ${cfg.chain.name} escrow names another chain`);
-  const token = n.usdc ?? (n.tokens as Record<string, { address?: unknown }> | undefined)?.USDG?.address;
+  const token = escrowToken(cfg.chain.name, n, cfg.em.paymentToken);
   const pinned = [
-    ["token", token, cfg.chain.usdg],
+    ["token", token.address, cfg.chain.usdg],
     ["escrow", n.escrow, cfg.em.escrow.escrow],
     ["operator", n.operator, cfg.em.escrow.operator],
     ["token collector", n.token_collector, cfg.em.escrow.tokenCollector],
   ] as const;
   for (const [what, theirs, ours] of pinned) {
     if (!same(theirs, ours)) throw new EscrowRefused(`Execution Market's ${what} on ${cfg.chain.name} is not the one Flat Fee is configured with`);
+  }
+  // compared exactly, as the token compares them: an authorization signed under any other domain could never settle
+  if (token.domainName !== USDG_DOMAIN.name || token.domainVersion !== USDG_DOMAIN.version) {
+    throw new EscrowRefused(`Execution Market's ${cfg.em.paymentToken} domain on ${cfg.chain.name} is not USDG's (${USDG_DOMAIN.name} / ${USDG_DOMAIN.version})`);
   }
   if (escrow.payment_info_typehash !== ESCROW_PAYMENT_INFO_TYPEHASH) throw new EscrowRefused("Execution Market's escrow typehash is not AuthCaptureEscrow's");
   const micro = (escrow.tier_timings as Record<string, Record<string, unknown>> | undefined)?.micro;
@@ -76,9 +111,10 @@ export function escrowNetwork(cfg: Config & { em: EmConfig }, paymentConfig: unk
     operator: cfg.em.escrow.operator,
     escrow: cfg.em.escrow.escrow,
     token_collector: cfg.em.escrow.tokenCollector,
-    usdc: cfg.chain.usdg,
-    usdc_domain_name: USDG_DOMAIN.name,
-    usdc_domain_version: USDG_DOMAIN.version,
+    // the SDK calls the escrow's token `usdc`: here it is the token EM named, checked above to be USDG with USDG's domain
+    usdc: getAddress(String(token.address).toLowerCase()),
+    usdc_domain_name: token.domainName as string,
+    usdc_domain_version: token.domainVersion as string,
     payment_info_typehash: ESCROW_PAYMENT_INFO_TYPEHASH,
     ...(tiers ? { tiers } : {}),
     ...(Number.isInteger(escrow.min_fee_bps) ? { min_fee_bps: escrow.min_fee_bps as number } : {}),

@@ -141,9 +141,9 @@ summary:hover .t { color: var(--lime); }
 .tasks li { border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; margin: 0 0 8px; display: flex; gap: 12px;
   align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .tasks li > div { min-width: 0; flex: 1 1 260px; }
-.tasks .q { margin: 0; color: var(--text); font-size: var(--fs-body); }
+.tasks .q { margin: 0; color: var(--text); font-size: var(--fs-body); overflow-wrap: anywhere; }
 .tasks .tm { margin: 4px 0 0; color: var(--muted); font: var(--fs-micro)/1.4 var(--mono); overflow-wrap: anywhere; }
-.tasks .answer { margin: 6px 0 0; color: var(--mint); font-size: var(--fs-small); }
+.tasks .answer { margin: 6px 0 0; color: var(--mint); font-size: var(--fs-small); overflow-wrap: anywhere; }
 .tasks .row { flex: 1 1 100%; margin: 0; }
 .tasks .row input { flex: 1 1 200px; width: auto; min-width: 0; }
 .tasks li.empty { color: var(--muted); font-size: var(--fs-small); }

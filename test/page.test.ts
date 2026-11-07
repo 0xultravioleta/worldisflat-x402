@@ -209,13 +209,13 @@ test("the escrow wording, word for word: a change to it is a change to this test
     boardMeta: "for workers: claim and answer",
     boardHow: "Workers: enter your wallet and worker token, claim a task, send the answer.",
   });
-  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.2", deadlineHours: 24 } }), {
+  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72 } }), {
     escrow: "on",
     pill: "Live on this demo",
     statusLabel: "With escrow:",
     statusText: "your task goes to Execution Market, and answers show on the task board below.",
-    bounty: "0.20",
-    foot: "Escrow on Robinhood Chain. Deadline 24 h.",
+    bounty: "0.125",
+    foot: "Escrow on Robinhood Chain. Deadline 72 h.",
     boardMeta: "tasks on Execution Market",
     boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
   });
@@ -258,12 +258,12 @@ test("escrow is said to run only for hire.via exactly \"execution-market\"", () 
       assert.doesNotMatch(s, /\blive\b|\blocked\b|goes to Execution Market|\bwith escrow:/i, s);
     }
   }
-  const on = escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.2", deadlineHours: 24 } });
+  const on = escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72 } });
   assert.equal(on.escrow, "on");
   assert.equal(on.pill, "Live on this demo");
   assert.equal(on.statusLabel, "With escrow:");
-  assert.equal(on.bounty, "0.20");
-  assert.equal(on.foot, "Escrow on Robinhood Chain. Deadline 24 h.");
+  assert.equal(on.bounty, "0.125");
+  assert.equal(on.foot, "Escrow on Robinhood Chain. Deadline 72 h.");
   assert.equal(on.boardMeta, "tasks on Execution Market");
   // without a bounty or a deadline, neither is made up
   const bare = escrowCopy({ network: { label: "Robinhood Chain Testnet" }, hire: { via: "execution-market", bounty: "0" } });
@@ -290,4 +290,14 @@ test("a missing value or an amount of zero is not mentioned; anything else is", 
   assert.equal(isAbsent(valueAt(info, "wif.token")), true);
   assert.equal(isAbsent(valueAt(info, "wif.cashback")), true);
   assert.equal(isAbsent(valueAt(info, "wif.workerReward")), false);
+});
+
+test("a long word in a task or an answer wraps on a phone instead of widening the page", () => {
+  // a request or an answer is up to 500 characters from whoever pays or answers, maybe one long URL with no space
+  const css = readFileSync("public/style.css", "utf8");
+  for (const sel of [".tasks .q", ".tasks .answer", ".tasks .tm"]) {
+    const rule = css.split("\n").find((l) => l.startsWith(`${sel} {`));
+    assert.ok(rule, sel);
+    assert.match(rule, /overflow-wrap: anywhere;/, sel);
+  }
 });

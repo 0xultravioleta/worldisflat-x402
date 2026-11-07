@@ -41,10 +41,10 @@ interface X402State {
 }
 
 /**
- * The one payment header the SDK middleware pays from: PAYMENT-SIGNATURE, else X-PAYMENT, exactly as its own
- * `req.header("PAYMENT-SIGNATURE") || req.header("X-PAYMENT")`. Reading it any other way (the SDK's exported
- * extractPaymentFromHeaders prefers X-PAYMENT) lets a decoy in one header pick the price while the other one pays.
- * Two different payment headers in one request are refused outright.
+ * The one payment header the price is picked from: PAYMENT-SIGNATURE, else X-PAYMENT. Two different payment headers
+ * in one request are refused outright, so a decoy in one header can never pick the price while the other one pays.
+ * The SDK middleware (uvd-x402-sdk 2.114.0, readPaymentHeaders) pays only from one value: it reads both headers,
+ * trimmed, and answers 400 itself when they differ, when one is present but empty, or when the value does not parse.
  */
 export function paymentHeaderOf(get: (name: string) => string | undefined): { value: string | null; conflict: boolean } {
   const ps = get("payment-signature") || null;
@@ -218,7 +218,7 @@ export function createApp({
       const header = paymentHeaderOf((n) => c.req.header(n));
       if (header.conflict) return c.json({ error: "send one payment header: PAYMENT-SIGNATURE and X-PAYMENT differ" }, 400);
       const signed = signedPayment(header.value);
-      // a header the SDK cannot route (no `network`) makes its middleware throw a 500: refuse it as bad input
+      // a header the SDK cannot route (no `network`) is bad input: refused here, before the price is picked from it
       if (header.value && !signed) return c.json({ error: "malformed payment header" }, 400);
 
       const tier = await tierFor(route, c, signed);

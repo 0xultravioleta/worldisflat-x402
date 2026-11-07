@@ -1,0 +1,16 @@
+# gitleaks: the default rules, plus one allowlist on generic-api-key.
+# test/fixtures/em-payment-config.json is Execution Market's public payment-config, recorded byte for byte. Its contract
+# addresses sit under keys like "token_collector", which generic-api-key reads as a secret. Only a secret that is an EVM
+# address (0x and 40 hex digits: public) in that one file is let through; a private key (64 hex digits), any other
+# kind of key there, and any address elsewhere are still caught.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "public EVM addresses in Execution Market's recorded payment-config"
+condition = "AND"
+paths = ['''(^|/)test/fixtures/em-payment-config\.json$''']
+regexTarget = "secret"
+regexes = ['''^0x[0-9a-fA-F]{40}$''']

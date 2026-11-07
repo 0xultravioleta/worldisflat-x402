@@ -1,9 +1,9 @@
 # gitleaks: the default rules, plus one allowlist on generic-api-key.
 # test/fixtures/em-payment-config.json is Execution Market's public payment-config, recorded byte for byte, and
-# deploy/aws/em-hire.env names the same public contracts for the deploy. Their addresses sit under keys like
-# "token_collector" / EM_TOKEN_COLLECTOR_ADDRESS, which generic-api-key reads as a secret. Only a secret that is an EVM
-# address (0x and 40 hex digits: public) in those two files is let through; a private key (64 hex digits), any other
-# kind of key there, and any address elsewhere are still caught.
+# deploy/aws/em-hire.env and test/deploy.test.ts name the same public contracts for the deploy. Their addresses sit
+# under keys like "token_collector" / EM_TOKEN_COLLECTOR_ADDRESS / tokenCollector, which generic-api-key reads as a
+# secret. Only a secret that is an EVM address (0x and 40 hex digits: public) in those three files is let through; a
+# private key (64 hex digits), any other kind of key there, and any address elsewhere are still caught.
 [extend]
 useDefault = true
 
@@ -12,6 +12,6 @@ id = "generic-api-key"
 [[rules.allowlists]]
 description = "public EVM addresses in Execution Market's recorded payment-config and the deploy's EM settings"
 condition = "AND"
-paths = ['''(^|/)test/fixtures/em-payment-config\.json$''', '''(^|/)deploy/aws/em-hire\.env$''']
+paths = ['''(^|/)test/fixtures/em-payment-config\.json$''', '''(^|/)deploy/aws/em-hire\.env$''', '''(^|/)test/deploy\.test\.ts$''']
 regexTarget = "secret"
 regexes = ['''^0x[0-9a-fA-F]{40}$''']

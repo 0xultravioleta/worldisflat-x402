@@ -3,7 +3,7 @@
 // escrow payout and $WIF, with every transaction and every Execution Market status it saw.
 import { computeAddress, getAddress, isAddress } from "ethers";
 import { CHAINS, USDG_DECIMALS, WIF_DECIMALS, formatUnits, parseUnitsStrict, privateKey, type Config } from "../../src/config.js";
-import { confirms } from "./buyer.js";
+import { confirms, type BuyOptions } from "./buyer.js";
 import { ledgerCashback, remoteRefusal } from "./live.js";
 
 type Env = Record<string, string | undefined>;
@@ -58,7 +58,8 @@ export function rpcRefusal(env: Env): string | null {
   if (!v) return "RPC_URL is not set: a live hire run reads balances only through the private RPC";
   let host = "";
   try {
-    host = new URL(v).hostname.toLowerCase();
+    // a trailing dot names the same host (an absolute name)
+    host = new URL(v).hostname.toLowerCase().replace(/\.+$/, "");
   } catch {
     return "RPC_URL is not a URL; the value is not shown";
   }
@@ -68,6 +69,11 @@ export function rpcRefusal(env: Env): string | null {
 }
 
 const MODES: WorkerMode[] = ["manual", "token", "erc8128"];
+
+/** the one X-EM-Client value the owner approved for the e2e test worker; any other is refused before paying */
+export const APPROVED_EM_CLIENT = "paybox-plugin";
+/** how long each of the worker's calls to EM waits: an apply also has EM mint the worker's identity first */
+export const WORKER_TIMEOUT_MS = 60_000;
 
 /**
  * Why a live hire run must stop before it reads the chain or signs anything, or the plan when it may go ahead.
@@ -105,8 +111,8 @@ export function hirePlanRefusal(cfg: Config, env: Env, payer: string): { refusal
       return no((e as Error).message);
     }
     if (!key) return no("WORKER_MODE=erc8128 needs WORKER_PRIVATE_KEY, the worker's own wallet");
-    if (!env.WORKER_EM_CLIENT?.trim()) {
-      return no("WORKER_MODE=erc8128 needs WORKER_EM_CLIENT, the client value the operator approved for the test worker (Flat Fee assigns only people); or use manual or token");
+    if (env.WORKER_EM_CLIENT?.trim() !== APPROVED_EM_CLIENT) {
+      return no(`WORKER_MODE=erc8128 needs WORKER_EM_CLIENT=${APPROVED_EM_CLIENT}, the one client value the owner approved for the test worker (Flat Fee assigns only people); any other is refused before paying. Or use manual or token`);
     }
     worker = computeAddress(key);
   } else {
@@ -269,6 +275,30 @@ function snapshot(t: any): string {
     .join(" ");
 }
 
+/**
+ * How scripts/e2e-hire.ts wires the run (kept here so it is tested): the buyer pays exactly the approved amount, to
+ * PAY_TO, on mainnet, reading the chain through the private RPC; the merchant is MERCHANT_PRIVATE_KEY's wallet, else
+ * PAY_TO (the deploy's one-wallet setup); errors are written without the RPC URL and the worker's session.
+ */
+export function hireWiring(cfg: Config, plan: HirePlan, env: Env) {
+  return {
+    buyOptions: (key: string, payer: string, body: { request: string }): BuyOptions => ({
+      url: `${plan.flatfee}/api/hire`,
+      body,
+      network: "robinhood",
+      key,
+      payer,
+      maxAmount: plan.approved.spend,
+      confirmMainnet: plan.approved.spend,
+      expectPayTo: cfg.payTo,
+      rpcUrl: cfg.rpcUrl,
+    }),
+    merchant: cfg.merchantKey ? computeAddress(cfg.merchantKey) : cfg.payTo,
+    secrets: [cfg.rpcUrl, env.WORKER_EM_TOKEN?.trim() || null],
+    workerTimeoutMs: WORKER_TIMEOUT_MS,
+  };
+}
+
 export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise<HireOutcome> {
   const seen: Seen[] = [];
   const problems: string[] = [];
@@ -346,7 +376,7 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   let emTaskId: string | null = null;
   let applied = false;
   let delivered = false;
-  const tries = { apply: 0, submit: 0 };
+  const tries = { apply: 0, submit: 0, identity: 0 };
   const statusOf = (err: unknown) => {
     const s = (err as { status?: unknown } | null)?.status;
     return typeof s === "number" ? s : null;
@@ -390,11 +420,20 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
       if (d.worker) {
         try {
           const a = await d.worker.apply(emTaskId);
-          note("worker", `POST /api/v1/tasks/${emTaskId}/apply: HTTP ${a.status}`);
+          // EM answers a repeated apply with 200 and already_applied (workers.py)
+          const again = (a.body as { already_applied?: unknown } | null)?.already_applied === true;
+          note("worker", `POST /api/v1/tasks/${emTaskId}/apply: HTTP ${a.status}${again ? " (already applied)" : ""}`);
         } catch (err) {
           const why = String((err as Error)?.message ?? err).slice(0, 200);
+          const code = String((err as { code?: unknown } | null)?.code ?? "").toLowerCase();
           if (statusOf(err) === 409) {
-            note("worker", `apply: already applied (${why})`);
+            // the task no longer takes applications (assigned, expired, cancelled), or this worker already applied:
+            // Flat Fee's status of the task says which
+            note("worker", `apply: the task no longer takes this application (${why}); following it`);
+          } else if (code === "identity_registration_failed" && ++tries.identity < 12) {
+            // EM mints a new worker's ERC-8004 identity while it applies; a retry while that runs is refused this way
+            note("worker", `apply: EM is still making the worker's identity (${why}); trying again on the next pass`);
+            applied = false;
           } else if (noVerdict(err) && ++tries.apply < 5) {
             note("worker", `apply got no answer (${why}); following the task, trying again on the next pass`);
             applied = false;

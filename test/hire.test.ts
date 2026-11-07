@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import { Wallet, getAddress, verifyTypedData, type JsonRpcProvider } from "ethers";
 import { ESCROW_PAYMENT_INFO_TYPEHASH, computeEscrowNonce } from "uvd-x402-sdk";
 import { policyFromPreset, verifyRequest, type NonceStore } from "uvd-x402-sdk/erc8128";
-import { createApp } from "../src/app.js";
+import { createApp, safeMessage } from "../src/app.js";
 import type { Chain, Tier } from "../src/chain.js";
 import { CHAINS, loadConfig, type Config, type EmConfig } from "../src/config.js";
 import { emClient, type Fetch } from "../src/em.js";
@@ -24,7 +24,7 @@ import { escrowPaymentAuth, escrowReadiness, releaseOrder } from "../src/escrow.
 import { Store } from "../src/store.js";
 import { budgetedWif } from "../src/wif.js";
 import { EmWorkerError, emWorker } from "../scripts/lib/emworker.js";
-import { hirePlanRefusal, origin, publishHint, remoteHireRefusal, rpcRefusal, runHire, type HireDeps, type HirePlan } from "../scripts/lib/hire.js";
+import { APPROVED_EM_CLIENT, hirePlanRefusal, hireWiring, origin, publishHint, remoteHireRefusal, rpcRefusal, runHire, type HireDeps, type HirePlan } from "../scripts/lib/hire.js";
 // @ts-expect-error plain JS module shared with the browser
 import { paymentHeader, typedDataFor } from "../public/x402-browser.js";
 
@@ -312,7 +312,7 @@ before(() => {
 });
 
 /** a Flat Fee with EM_HIRE on (the deploy's shape, on mainnet), Execution Market's double, and the run's deps */
-function world(opts: { workerAuth?: "token" | "erc8128"; approvedClient?: string | null; payTo?: string; slowReward?: boolean } = {}) {
+function world(opts: { workerAuth?: "token" | "erc8128"; approvedClient?: string | null; payTo?: string; slowReward?: boolean; reputation?: string } = {}) {
   const payTo = opts.payTo ?? merchant.address;
   // the worker's $WIF is mined a while after Flat Fee marked the task done (src/emhire.ts finish): held until a later wait
   let heldReward: (() => void) | null = null;
@@ -341,7 +341,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; approvedClient?: string
     EM_ESCROW_ADDRESS: RH.escrow,
     EM_OPERATOR_ADDRESS: RH.operator,
     EM_TOKEN_COLLECTOR_ADDRESS: RH.token_collector,
-    EM_REPUTATION_NETWORK: "robinhood",
+    ...(opts.reputation ? { EM_REPUTATION_NETWORK: opts.reputation } : {}),
   });
   const cfg = { ...loaded, em: loaded.em! } as Config & { em: EmConfig };
   const chain: Chain = {
@@ -462,7 +462,7 @@ test("e2e:hire against the doubles: paid, published, applied, escrow locked, del
 });
 
 test("e2e:hire with a worker that signs ERC-8128 as the operator's approved client: assigned and paid the same way", async () => {
-  const w = world({ workerAuth: "erc8128", approvedClient: "an-approved-client" });
+  const w = world({ workerAuth: "erc8128", approvedClient: APPROVED_EM_CLIENT });
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), w.deps);
   assert.deepEqual(o.problems, []);
@@ -614,7 +614,7 @@ test("the worker's $WIF is mined after Flat Fee marked the task done: the run wa
 });
 
 test("an approval that came back without its payment tx: the release tx is the one EM shows the worker on the task", async () => {
-  const w = world({ workerAuth: "erc8128", approvedClient: "an-approved-client" });
+  const w = world({ workerAuth: "erc8128", approvedClient: APPROVED_EM_CLIENT });
   w.em.st.approveWithoutTx = true;
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), w.deps);
@@ -743,12 +743,12 @@ test("taken but not delivered by the deadline: EM expires it and its escrow retu
   assert.equal(merchantWif - w.ledger.get(w.ledger.wif, merchant.address), 10n * W);
 });
 
-test("the deploy's reputation network goes with every publish; if EM refuses it, the run says what to do", async () => {
+test("the deploy sends no reputation network; one EM refuses (robinhood today) ends the hire, and the run says what to do", async () => {
   const ok = world();
   await ok.hire.tick();
   assert.equal((await runHire(planOf(), runCfg(), ok.deps)).ok, true);
-  assert.equal(ok.em.st.creates[0].reputation_network, "robinhood");
-  const w = world();
+  assert.equal("reputation_network" in ok.em.st.creates[0], false);
+  const w = world({ reputation: "robinhood" });
   w.em.st.refuseReputation = true;
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), w.deps);
@@ -798,7 +798,7 @@ test("an apply or a delivery that got no answer (a timeout, a 5xx) is tried agai
     assert.equal(failed, 2, which);
     assert.equal(o.seen.filter((x) => x.source === "worker" && /got no answer/.test(x.what)).length, 2, which);
   }
-  // the first apply landed but its answer was lost: the next one is EM's 409, and the run goes on
+  // the first apply landed but its answer was lost: EM answers the next one 200 already_applied, and the run goes on
   {
     const w = world();
     await w.hire.tick();
@@ -813,20 +813,99 @@ test("an apply or a delivery that got no answer (a timeout, a 5xx) is tried agai
             await real.apply(id);
             throw new EmWorkerError(0, "unreachable", "Execution Market did not answer within 20000 ms");
           }
-          throw new EmWorkerError(409, "already_applied", "Execution Market answered 409 already_applied");
+          return { status: 200, body: { success: true, already_applied: true } };
         },
       },
     };
     const o = await runHire(planOf(), runCfg(), deps);
     assert.deepEqual(o.problems, []);
     assert.equal(calls, 2);
-    assert.ok(o.seen.some((x) => x.source === "worker" && /apply: already applied/.test(x.what)));
+    assert.ok(o.seen.some((x) => x.source === "worker" && /apply: HTTP 200 \(already applied\)/.test(x.what)));
   }
   // a refusal with a verdict still stops the run
   const w = world();
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), { ...w.deps, worker: { ...w.deps.worker!, apply: async () => { throw new EmWorkerError(403, "forbidden", "Execution Market answered 403"); } } });
   assert.deepEqual(o.problems, ["Execution Market did not take the worker's application"]);
+});
+
+test("an apply EM answers 409 (the task no longer takes it): the run follows the task, and Flat Fee's status decides", async () => {
+  const w = world();
+  await w.hire.tick();
+  const stranger = Wallet.createRandom().address;
+  const deps: HireDeps = {
+    ...w.deps,
+    worker: {
+      ...w.deps.worker!,
+      // someone else got it first: EM no longer takes applications for it
+      apply: async (id) => {
+        w.em.stranger(id, stranger);
+        await w.hire.tick();
+        throw new EmWorkerError(409, null, "Execution Market answered 409: Task is not open for applications");
+      },
+    },
+  };
+  const o = await runHire(planOf(), runCfg(), deps);
+  assert.equal(o.ok, false);
+  assert.ok(o.seen.some((x) => x.source === "worker" && /apply: the task no longer takes this application/.test(x.what)));
+  assert.match(o.problems.join("\n"), /assigned another applicant/);
+});
+
+test("a new worker wallet: an apply refused while EM still makes its identity is tried again, with a cap", async () => {
+  const identity = () => new EmWorkerError(403, "identity_registration_failed", "Execution Market answered 403 identity_registration_failed");
+  // three refusals while the mint runs, then the identity is there
+  {
+    const w = world();
+    await w.hire.tick();
+    let n = 0;
+    const real = w.deps.worker!;
+    const o = await runHire(planOf(), runCfg(), { ...w.deps, worker: { ...real, apply: async (id) => (++n <= 3 ? Promise.reject(identity()) : real.apply(id)) } });
+    assert.deepEqual(o.problems, []);
+    assert.equal(n, 4);
+    assert.equal(o.seen.filter((x) => /EM is still making the worker's identity/.test(x.what)).length, 3);
+  }
+  // never: the run stops after 12 tries, before anything else happens to the hire
+  const w = world();
+  await w.hire.tick();
+  let n = 0;
+  const o = await runHire(planOf(), runCfg(), { ...w.deps, worker: { ...w.deps.worker!, apply: async () => (n++, Promise.reject(identity())) } });
+  assert.equal(n, 12);
+  assert.deepEqual(o.problems, ["Execution Market did not take the worker's application"]);
+});
+
+test("e2e-hire's wiring: the buyer pays exactly the approval, to PAY_TO, on mainnet, through the private RPC; secrets stay out of errors", () => {
+  const plan = planOf();
+  const cfg = runCfg();
+  const w = hireWiring(cfg, plan, RUN_ENV);
+  assert.deepEqual(w.buyOptions("0xKEY", buyer.address, { request: "r" }), {
+    url: "https://flatfee.example/api/hire",
+    body: { request: "r" },
+    network: "robinhood",
+    key: "0xKEY",
+    payer: buyer.address,
+    maxAmount: "0.25",
+    confirmMainnet: "0.25",
+    expectPayTo: merchant.address,
+    rpcUrl: RUN_ENV.RPC_URL,
+  });
+  // the merchant: MERCHANT_PRIVATE_KEY's wallet, else PAY_TO
+  assert.equal(w.merchant, merchant.address);
+  const noKey = loadConfig({ ...RUN_ENV, WIF_CASHBACK: "0", MERCHANT_PRIVATE_KEY: "" });
+  assert.equal(hireWiring(noKey, plan, RUN_ENV).merchant, noKey.payTo);
+  // each worker call waits a minute: an apply also has EM mint the worker's identity
+  assert.equal(w.workerTimeoutMs, 60_000);
+  // errors are written without the RPC URL and the worker's session
+  const m = safeMessage(new Error(`request to ${RUN_ENV.RPC_URL} failed; session ${sessionToken}`), w.secrets);
+  assert.ok(!m.includes(RUN_ENV.RPC_URL) && !m.includes(sessionToken), m);
+});
+
+test("a buyer holding exactly the price pays it", async () => {
+  const w = world();
+  w.ledger.usdg.set(buyer.address.toLowerCase(), 250_000n);
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), w.deps);
+  assert.deepEqual(o.problems, []);
+  assert.equal(w.ledger.get(w.ledger.usdg, buyer.address), 0n);
 });
 
 test("a payment call that throws still gives an outcome, and says the hire may have been paid", async () => {
@@ -870,7 +949,7 @@ test("the rules: mainnet only, the private RPC only, every amount approved, a wo
   assert.match(refusal({ NETWORK: "robinhood-testnet", WIF_CASHBACK: "0" })!, /mainnet only/);
   assert.match(refusal({ RPC_URL: undefined })!, /RPC_URL is not set/);
   assert.match(refusal({ RPC_URL: "" })!, /RPC_URL is not set/);
-  for (const pub of ["https://rpc.mainnet.chain.robinhood.com", "https://RPC.MAINNET.CHAIN.ROBINHOOD.COM/", "https://rpc.testnet.chain.robinhood.com", "https://other.chain.robinhood.com/x"]) {
+  for (const pub of ["https://rpc.mainnet.chain.robinhood.com", "https://RPC.MAINNET.CHAIN.ROBINHOOD.COM/", "https://rpc.mainnet.chain.robinhood.com./", "https://RPC.mainnet.chain.robinhood.com.:443/x", "https://other.chain.robinhood.com./", "https://rpc.testnet.chain.robinhood.com", "https://other.chain.robinhood.com/x"]) {
     assert.match(refusal({ RPC_URL: pub })!, /public RPC/, pub);
   }
   assert.match(refusal({ RPC_URL: "not a url with key abc123" })!, /not a URL; the value is not shown/);
@@ -896,16 +975,22 @@ test("the rules: mainnet only, the private RPC only, every amount approved, a wo
   assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: undefined })!, /needs WORKER_PRIVATE_KEY/);
   assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: "0x1234" })!, /WORKER_PRIVATE_KEY is not a private key \(0x and 64 hex digits\); the value is not shown/);
   // a script's ERC-8128 worker is an agent to Execution Market, and Flat Fee assigns only people
-  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey })!, /WORKER_MODE=erc8128 needs WORKER_EM_CLIENT, the client value the operator approved/);
+  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey })!, /WORKER_MODE=erc8128 needs WORKER_EM_CLIENT=paybox-plugin, the one client value the owner approved/);
   // an empty EM_API_URL (a .env copied from .env.example) is Execution Market's own
   for (const empty of ["", "  "]) {
     const p = hirePlanRefusal(loadConfig(RUN_ENV), { ...RUN_ENV, EM_API_URL: empty }, buyer.address);
     assert.ok("plan" in p && p.plan.emApi === "https://api.execution.market", JSON.stringify(empty));
   }
-  assert.equal(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey, WORKER_EM_CLIENT: "x" }), null);
+  assert.equal(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey, WORKER_EM_CLIENT: "paybox-plugin" }), null);
+  assert.equal(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey, WORKER_EM_CLIENT: " paybox-plugin " }), null);
+  // only the value the owner approved: anything else would be listed as an agent, never assigned, after paying
+  for (const other of ["x", "PAYBOX-PLUGIN", "paybox", "paybox-plugin2", "dashboard"]) {
+    assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey, WORKER_EM_CLIENT: other })!, /needs WORKER_EM_CLIENT=paybox-plugin/, other);
+  }
+  assert.equal(APPROVED_EM_CLIENT, "paybox-plugin");
   // nobody else's wallet: not the buyer, not PAY_TO, not the merchant, in any case
   assert.match(refusal({ WORKER_WALLET: buyer.address.toUpperCase().replace("0X", "0x") })!, /cannot be the buyer/);
-  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: buyer.privateKey, WORKER_EM_CLIENT: "x" })!, /cannot be the buyer/);
+  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: buyer.privateKey, WORKER_EM_CLIENT: "paybox-plugin" })!, /cannot be the buyer/);
   assert.match(refusal({ WORKER_WALLET: merchant.address.toLowerCase() })!, /cannot be PAY_TO/);
   const other = Wallet.createRandom();
   assert.match(refusal({ PAY_TO: other.address, WORKER_WALLET: merchant.address })!, /cannot be the merchant/);

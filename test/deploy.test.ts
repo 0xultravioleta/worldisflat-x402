@@ -59,7 +59,7 @@ test("em-hire.env: no secret in it, and every value reads as .env.example says",
       operator: "0x0258472A1410Ac3Ad720f1BC83f22B3c0af1Fd9D",
       tokenCollector: "0x0E3dF9510de65469C4518D7843919c0b8C7A7757",
     },
-    reputationNetwork: "robinhood",
+    reputationNetwork: null,
   });
   // the bounty fits under the holder price of a hire, so either tier's price covers it
   assert.ok(cfg.em!.bounty <= cfg.prices.hireHolder);

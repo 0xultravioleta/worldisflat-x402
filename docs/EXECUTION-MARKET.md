@@ -203,7 +203,7 @@ and the escrow builder ship in `uvd-x402-sdk`, already a dependency here.
 | `EM_POLL_SECONDS` | `30` | how often the loop advances open tasks |
 | `EM_PAYMENT_TOKEN` | `USDG` | the token EM records for the task |
 | `EM_ESCROW_ADDRESS`, `EM_OPERATOR_ADDRESS`, `EM_TOKEN_COLLECTOR_ADDRESS` | (required when on) | the escrow contracts on `NETWORK`, as deployed for Execution Market |
-| `EM_REPUTATION_NETWORK` | (none) | optional, passed to EM as `reputation_network`; `robinhood` makes ratings land on the chain that paid (EM registers ERC-8004 identities on Robinhood Chain in production: `GET /api/v1/reputation/register/wallet/{wallet}?network=robinhood` answers where an unsupported network answers 400). A network EM refuses ends that task with `invalid_reputation_network` and pauses hiring |
+| `EM_REPUTATION_NETWORK` | (none) | optional, passed to EM as `reputation_network`; empty lets EM decide. EM takes only a network its SDK can relay ratings on (`REPUTATION_CAPABLE_NETWORKS`, `integrations/erc8004/reputation_target.py` at `647b419e`, with `uvd-x402-sdk` 0.108.0's `RELAYED_FEEDBACK_NETWORKS`): `robinhood` is not one today, though EM registers identities there. A network EM refuses ends that task with `422 invalid_reputation_network` (the buyer already paid) and pauses hiring, so the deploy leaves it empty until EM takes `robinhood` |
 
 `EM_HIRE=on` also needs `MERCHANT_PRIVATE_KEY`: the merchant wallet is Flat Fee's identity on Execution Market and the
 payer of every escrow, so it must hold USDG for the bounties as well as $WIF and a little ETH for gas. `WORKER_TOKEN`
@@ -232,7 +232,9 @@ still open leaves them unattended too: nobody approves them and no $WIF goes out
 ### Turning it on in the deploy
 
 The container's whole environment with hiring through Execution Market on is `deploy/aws/em-hire.env` (no secrets:
-`MERCHANT_PRIVATE_KEY` and `WORKER_TOKEN` keep the values the container has). `test/deploy.test.ts` loads that file the
+`MERCHANT_PRIVATE_KEY` and `WORKER_TOKEN` are the container's own: through Terraform they stay in `terraform.tfvars`,
+but a Lightsail deployment made any other way takes its environment whole, so both go with it again, or `EM_HIRE=on`
+refuses to start without the merchant key). `test/deploy.test.ts` loads that file the
 way the server does, checks every `EM_*` value against EM's recorded payment-config for Robinhood Chain (and that the
 SDK builds that escrow), and that each key reaches the container through `deploy/aws/main.tf` (`em_*` variables in
 `terraform.tfvars`) and is in `.env.example`.
@@ -253,8 +255,8 @@ unattended (above).
 payment is matched on depends on it: `uvd-x402-sdk` matches a payment to the 402 by network, recipient and amount
 (`resolvePaymentRequirement`), and an `X-UVD-Purchase` receipt is bound to the URL actually requested. So with
 `PUBLIC_URL=https://flatfee.ultravioletadao.xyz`, a buyer on the domain gets a 402 that names the host they opened, and
-one who comes in on the Lightsail URL gets the same 402 (naming the domain) and pays and is served the same
-(`test/deploy.test.ts`). The page reads its own origin, and `/api/info` and Execution Market never see `PUBLIC_URL`.
+one who comes in on the Lightsail URL gets the same 402, naming the domain (`test/deploy.test.ts` compares the two),
+and a payment signed for it is matched the same way, since nothing it is matched on names a host. The page reads its own origin, and `/api/info` and Execution Market never see `PUBLIC_URL`.
 
 ### The end-to-end run (`npm run e2e:hire`)
 
@@ -270,9 +272,12 @@ and, once its escrow locked, delivers a text answer; at the end it reads Executi
 worker, and checks on chain that the buyer paid exactly the price and got the cashback, and that the worker got the
 bounty less EM's fee and exactly the reward. It never prints a key, a session or the RPC URL.
 
-The worker (`WORKER_MODE`): `erc8128` signs with its own wallet (`WORKER_PRIVATE_KEY`) and needs `WORKER_EM_CLIENT`,
-the client value the operator approved for the test worker (without it the run refuses: Flat Fee assigns only
-people). `token` uses a person's dashboard session (`WORKER_EM_TOKEN`), and
+The worker (`WORKER_MODE`): `erc8128` signs with its own wallet (`WORKER_PRIVATE_KEY`) and needs
+`WORKER_EM_CLIENT=paybox-plugin`, the one client value the owner approved for the test worker; the run refuses any
+other before paying, since Flat Fee assigns only people. A new worker wallet gets its ERC-8004 identity from EM
+while it applies (gasless); an apply that times out or answers `403 identity_registration_failed` while that mint
+runs is tried again on later passes (each worker call waits up to 60 s). `token` uses a person's dashboard session
+(`WORKER_EM_TOKEN`), and
 `manual` waits for a person on execution.market (`WORKER_WALLET`) to apply and deliver the text the run prints. If
 someone else applies with a better reputation and Flat Fee picks them, the run says so and delivers nothing.
 

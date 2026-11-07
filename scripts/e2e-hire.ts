@@ -25,13 +25,12 @@ import { privateKey, txUrl } from "../src/config.js";
 import { buy } from "./lib/buyer.js";
 import { emWorker } from "./lib/emworker.js";
 import { configOrExit, keyOrExit } from "./lib/env.js";
-import { hirePlanRefusal, remoteHireRefusal, runHire } from "./lib/hire.js";
+import { hirePlanRefusal, hireWiring, remoteHireRefusal, runHire } from "./lib/hire.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const cfg = configOrExit(process.env);
 const key = keyOrExit("PAYER_PRIVATE_KEY");
 const payer = new Wallet(key).address;
-const redact = (e: unknown) => safeMessage(e, [cfg.rpcUrl, process.env.WORKER_EM_TOKEN]);
 const stop = (msg: string): never => {
   console.error(msg);
   process.exit(1);
@@ -40,6 +39,8 @@ const stop = (msg: string): never => {
 const planned = hirePlanRefusal(cfg, process.env, payer);
 if ("refusal" in planned) stop(planned.refusal);
 const plan = (planned as Extract<typeof planned, { plan: unknown }>).plan;
+const wiring = hireWiring(cfg, plan, process.env);
+const redact = (e: unknown) => safeMessage(e, wiring.secrets);
 
 const getJson = async (url: string): Promise<unknown> => {
   const r = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -76,6 +77,7 @@ const worker =
     ? null
     : emWorker({
         apiUrl: plan.emApi,
+        timeoutMs: wiring.workerTimeoutMs,
         auth:
           plan.mode === "token"
             ? { kind: "token", token: process.env.WORKER_EM_TOKEN!.trim(), address: plan.worker }
@@ -90,18 +92,7 @@ try {
   const outcome = await runHire(plan, cfg, {
     flatfee: (p) => getJson(`${plan.flatfee}${p}`),
     pay: async (body) => {
-      const r = await buy({
-        url: `${plan.flatfee}/api/hire`,
-        body,
-        network: "robinhood",
-        key,
-        payer,
-        maxAmount: plan.approved.spend,
-        confirmMainnet: plan.approved.spend,
-        expectPayTo: cfg.payTo,
-        // the buyer's SDK client reads the chain through the private RPC too
-        rpcUrl: cfg.rpcUrl,
-      });
+      const r = await buy(wiring.buyOptions(key, payer, body));
       return { status: r.status, body: r.body };
     },
     worker,
@@ -111,8 +102,7 @@ try {
     },
     payer,
     payTo: cfg.payTo,
-    // the wallet that locks the escrow: MERCHANT_PRIVATE_KEY's, else PAY_TO (the deploy's one-wallet setup)
-    merchant: cfg.merchantKey ? new Wallet(cfg.merchantKey).address : cfg.payTo,
+    merchant: wiring.merchant,
     explorerTx: (h) => txUrl(cfg.chain, h),
     fees,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),

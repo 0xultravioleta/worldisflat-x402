@@ -56,7 +56,13 @@ const emHire: EmHire = {
   start: () => () => {},
 };
 
+// EM_HIRE=on with hiring paused: the merchant cannot fund the next escrow. The detail (the 503's) names a wallet and an
+// amount; the page must show only the fixed sentence /api/info sends
+const PAUSE_DETAIL = "the merchant wallet 0x00000000000000000000000000000000000000ee cannot fund one more escrow (0.25 USDG needed for the open hires)";
+const pausedHire: EmHire = { ...emHire, unavailable: () => ({ kind: "funds", detail: PAUSE_DETAIL }) };
+
 let on = ""; // escrow on (EM_HIRE=on), $WIF on, every amount unusual
+let paused = ""; // the same, with hiring paused (the merchant cannot fund one more escrow)
 let off = ""; // the task board (EM_HIRE off), no $WIF token
 let fork = ""; // the same as `off`, served as a local fork (npm run demo)
 let claimedTask = "";
@@ -89,31 +95,31 @@ before(() => {
   const onStore = new Store(onDir);
   onStore.addLedger({ kind: "hire", network: "eip155:46630", payer: buyer, tier: "holder", price: "6172562500", settleTx: `0x${"ab".repeat(32)}`, cashbackTx: null, taskId: "t1" });
   onStore.addLedger({ kind: "ask", network: "eip155:46630", payer: buyer, tier: "standard", price: "375000", settleTx: `0x${"cd".repeat(32)}`, cashbackTx: null, question: "latest block?" });
-  on = start(
-    {
-      NETWORK: "robinhood-testnet",
-      PAY_TO: payTo,
-      FACILITATOR_URL: `http://${facilitatorHost}`,
-      DATA_DIR: onDir,
-      PRICE_ASK_USDG: "0.375",
-      PRICE_ASK_HOLDER_USDG: "0.0625",
-      PRICE_HIRE_USDG: "12345.125",
-      PRICE_HIRE_HOLDER_USDG: "6172.5625",
-      WIF_ADDRESS: Wallet.createRandom().address,
-      WIF_HOLDER_MIN: "4321",
-      WIF_CASHBACK: "7",
-      WIF_WORKER_REWARD: "33",
-      MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
-      EM_HIRE: "on",
-      EM_API_URL: "https://em.test",
-      EM_ESCROW_ADDRESS: Wallet.createRandom().address,
-      EM_OPERATOR_ADDRESS: Wallet.createRandom().address,
-      EM_TOKEN_COLLECTOR_ADDRESS: Wallet.createRandom().address,
-      EM_BOUNTY_USDG: "0.125",
-      EM_DEADLINE_HOURS: "720",
-    },
-    { chain: holderChain, store: onStore, emHire },
-  );
+  const onEnv = {
+    NETWORK: "robinhood-testnet",
+    PAY_TO: payTo,
+    FACILITATOR_URL: `http://${facilitatorHost}`,
+    DATA_DIR: onDir,
+    PRICE_ASK_USDG: "0.375",
+    PRICE_ASK_HOLDER_USDG: "0.0625",
+    PRICE_HIRE_USDG: "12345.125",
+    PRICE_HIRE_HOLDER_USDG: "6172.5625",
+    WIF_ADDRESS: Wallet.createRandom().address,
+    WIF_HOLDER_MIN: "4321",
+    WIF_CASHBACK: "7",
+    WIF_WORKER_REWARD: "33",
+    MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
+    EM_HIRE: "on",
+    EM_API_URL: "https://em.test",
+    EM_ESCROW_ADDRESS: Wallet.createRandom().address,
+    EM_OPERATOR_ADDRESS: Wallet.createRandom().address,
+    EM_TOKEN_COLLECTOR_ADDRESS: Wallet.createRandom().address,
+    EM_BOUNTY_USDG: "0.125",
+    EM_DEADLINE_HOURS: "720",
+  };
+  on = start(onEnv, { chain: holderChain, store: onStore, emHire });
+  const pausedDir = dir("paused");
+  paused = start({ ...onEnv, DATA_DIR: pausedDir }, { chain: holderChain, store: new Store(pausedDir), emHire: pausedHire });
 
   const offDir = dir("off");
   const offStore = new Store(offDir);
@@ -198,7 +204,7 @@ async function openPage(base: string, ethereum?: Eip1193) {
 test("the page shows every amount, the network, the bounty and the deadline this server sends (escrow on, unusual values)", async () => {
   const info = await (await fetch(`${on}/api/info`)).json();
   assert.deepEqual(info.prices, { ask: { standard: "0.375", holder: "0.0625" }, hire: { standard: "12345.125", holder: "6172.5625" } });
-  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720 });
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: true, paused: null });
   const p = await openPage(on);
   try {
     const { doc, $ } = p;
@@ -236,6 +242,33 @@ test("the page shows every amount, the network, the bounty and the deadline this
     // a wallet can pay here
     assert.equal($("#hire-pay").disabled, false);
     assert.equal($("#fork-notice").hidden, true);
+  } finally {
+    p.close();
+  }
+});
+
+test("with hiring paused (EM_HIRE on, the merchant cannot fund one more escrow) the page says paused, with the server's sentence word for word, never Live", async () => {
+  const info = await (await fetch(`${paused}/api/info`)).json();
+  const reason = "The wallet that pays the escrow cannot fund one more task right now.";
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: false, paused: { kind: "funds", reason } });
+  // the 503's detail (a wallet, an amount) is not in /api/info
+  assert.ok(!JSON.stringify(info).includes("0x00000000000000000000000000000000000000ee"));
+  assert.ok(!JSON.stringify(info).includes("0.25 USDG"));
+  const p = await openPage(paused);
+  try {
+    const { doc, $ } = p;
+    assert.equal(doc.body.dataset.escrow, "paused");
+    assert.equal(visibleText($("#escrow-pill")), "Paused on this demo");
+    assert.equal(visibleText($("#hire-status")), `Hiring is paused: ${reason}`);
+    // how escrow works, as this server would run it: its bounty and deadline are still its own
+    assert.equal(visibleText($(".steps .lock")), "The worker's pay is locked in escrow: 0.125 USDG.");
+    assert.equal(visibleText($("#escrow-foot")), "Escrow on Robinhood Chain Testnet. Deadline 720 h.");
+    assert.equal(visibleText($("#board-meta")), "tasks on Execution Market");
+    // nothing on the page says escrow runs now, and the 503's detail is nowhere on it
+    const text = visibleText(doc.body);
+    assert.doesNotMatch(text, /\blive\b|with escrow:|goes to Execution Market/i);
+    assert.ok(!text.includes(PAUSE_DETAIL));
+    assert.ok(!text.includes("0x0000…00ee"));
   } finally {
     p.close();
   }

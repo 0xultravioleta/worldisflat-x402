@@ -7,11 +7,12 @@
   <meta name="description" content="Hire a human for a small task for one flat USDG fee on Robinhood Chain, paid over x402." />
   <link rel="icon" href="/logo.png" />
   <!-- ?v= so a browser that cached the previous page's files does not pair them with this markup -->
-  <link rel="stylesheet" href="/style.css?v=2" />
+  <link rel="stylesheet" href="/style.css?v=3" />
 </head>
 <!-- The static text is the escrow-OFF state (Flat Fee's own task board). app.js switches to escrow ON only when
-     /api/info says hire.via = "execution-market" (EM_HIRE=on); the strings come from page-state.js. Amounts stay "…"
-     and lines that need a value stay hidden until /api/info sends it. -->
+     /api/info says hire.via = "execution-market" (EM_HIRE=on) and hire.available = true, and to PAUSED, with the
+     server's reason, when it says false; the strings come from page-state.js. Amounts stay "…" and lines that need a
+     value stay hidden until /api/info sends it. -->
 <body data-escrow="off">
   <div class="wrap">
     <header class="bar">
@@ -132,6 +133,6 @@ npm run buy -- "latest block?"</pre>
       or officially connected with Robinhood Markets, Inc.</p>
     <p><a href="https://github.com/0xultravioleta/worldisflat-x402">github.com/0xultravioleta/worldisflat-x402</a></p>
   </footer>
-  <script type="module" src="/app.js?v=2"></script>
+  <script type="module" src="/app.js?v=3"></script>
 </body>
 </html>

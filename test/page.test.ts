@@ -17,7 +17,7 @@ import type { Chain } from "../src/chain.js";
 import { loadConfig } from "../src/config.js";
 import { Store } from "../src/store.js";
 // @ts-expect-error plain JS module shared with the browser
-import { escrowCopy, isAbsent, usdg, valueAt } from "../public/page-state.js";
+import { PAUSED_FALLBACK, escrowCopy, isAbsent, usdg, valueAt } from "../public/page-state.js";
 
 const payTo = Wallet.createRandom().address;
 const facCalls: string[] = [];
@@ -209,11 +209,23 @@ test("the escrow wording, word for word: a change to it is a change to this test
     boardMeta: "for workers: claim and answer",
     boardHow: "Workers: enter your wallet and worker token, claim a task, send the answer.",
   });
-  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72 } }), {
+  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: true, paused: null } }), {
     escrow: "on",
     pill: "Live on this demo",
     statusLabel: "With escrow:",
     statusText: "your task goes to Execution Market, and answers show on the task board below.",
+    bounty: "0.125",
+    foot: "Escrow on Robinhood Chain. Deadline 72 h.",
+    boardMeta: "tasks on Execution Market",
+    boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+  });
+  // paused: the server's sentence, as it sent it
+  const reason = "The wallet that pays the escrow cannot fund one more task right now.";
+  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: false, paused: { kind: "funds", reason } } }), {
+    escrow: "paused",
+    pill: "Paused on this demo",
+    statusLabel: "Hiring is paused:",
+    statusText: reason,
     bounty: "0.125",
     foot: "Escrow on Robinhood Chain. Deadline 72 h.",
     boardMeta: "tasks on Execution Market",
@@ -258,7 +270,7 @@ test("escrow is said to run only for hire.via exactly \"execution-market\"", () 
       assert.doesNotMatch(s, /\blive\b|\blocked\b|goes to Execution Market|\bwith escrow:/i, s);
     }
   }
-  const on = escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72 } });
+  const on = escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: true } });
   assert.equal(on.escrow, "on");
   assert.equal(on.pill, "Live on this demo");
   assert.equal(on.statusLabel, "With escrow:");
@@ -266,9 +278,31 @@ test("escrow is said to run only for hire.via exactly \"execution-market\"", () 
   assert.equal(on.foot, "Escrow on Robinhood Chain. Deadline 72 h.");
   assert.equal(on.boardMeta, "tasks on Execution Market");
   // without a bounty or a deadline, neither is made up
-  const bare = escrowCopy({ network: { label: "Robinhood Chain Testnet" }, hire: { via: "execution-market", bounty: "0" } });
+  const bare = escrowCopy({ network: { label: "Robinhood Chain Testnet" }, hire: { via: "execution-market", bounty: "0", available: true } });
   assert.equal(bare.bounty, null);
   assert.equal(bare.foot, "Escrow on Robinhood Chain Testnet.");
+});
+
+test("through Execution Market, the page says Live only when the server says a hire would be taken now; otherwise paused, never with a made-up cause", () => {
+  const hire = { via: "execution-market", bounty: "0.2", deadlineHours: 24 };
+  // anything but available exactly true is paused: missing (an older server), false, a string, a number
+  for (const available of [undefined, null, false, "true", 1, "yes"]) {
+    const c = escrowCopy({ network: { label: "Robinhood Chain" }, hire: { ...hire, available } });
+    assert.equal(c.escrow, "paused", String(available));
+    assert.equal(c.pill, "Paused on this demo", String(available));
+    // no reason from the server: a fixed sentence that names no cause
+    assert.equal(c.statusText, PAUSED_FALLBACK, String(available));
+    for (const s of Object.values(c).filter((v): v is string => typeof v === "string")) {
+      assert.doesNotMatch(s, /\blive\b|goes to Execution Market|\bwith escrow:/i, s);
+    }
+  }
+  // the reason is shown as the server sent it; an empty or non-string one falls back
+  const withReason = (paused: unknown) => escrowCopy({ hire: { ...hire, available: false, paused } }).statusText;
+  assert.equal(withReason({ kind: "escrow", reason: "Execution Market's escrow on Robinhood Chain cannot take a hire right now." }), "Execution Market's escrow on Robinhood Chain cannot take a hire right now.");
+  for (const bad of [null, {}, { reason: "" }, { reason: "   " }, { reason: 42 }, { reason: ["x"] }, "a string"]) assert.equal(withReason(bad), PAUSED_FALLBACK, JSON.stringify(bad));
+  // available: true wins over a stale paused object; it is the server's word on now
+  assert.equal(escrowCopy({ hire: { ...hire, available: true, paused: { reason: "old" } } }).escrow, "on");
+  assert.equal(PAUSED_FALLBACK, "this server is not taking hires right now.");
 });
 
 test("USDG amounts keep every decimal the server sends, and show at least two", () => {

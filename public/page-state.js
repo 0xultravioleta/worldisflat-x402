@@ -20,10 +20,15 @@ export function usdg(v) {
   return `${whole}.${frac.replace(/0+$/, "").padEnd(2, "0")}`;
 }
 
+/** what the page says while a server that hires through Execution Market is not taking hires, when it sends no reason */
+export const PAUSED_FALLBACK = "this server is not taking hires right now.";
+
 /**
  * The escrow status of a hire. Escrow is on only when the server hires through Execution Market
  * (`hire.via === "execution-market"`, EM_HIRE=on); anything else, a missing `hire` included, is Flat Fee's own task
- * board, with no escrow. index.html carries the "off" strings as its static default.
+ * board, with no escrow. index.html carries the "off" strings as its static default. Through Execution Market, the
+ * page says "Live" only while the server says a hire would be taken now (`hire.available === true`); otherwise it is
+ * paused, with the server's own reason (`hire.paused.reason`) word for word.
  */
 export function escrowCopy(info) {
   const hire = info?.hire;
@@ -41,14 +46,27 @@ export function escrowCopy(info) {
   }
   const label = info?.network?.label || "Robinhood Chain";
   const deadline = isAbsent(hire.deadlineHours) ? "" : ` Deadline ${hire.deadlineHours} h.`;
+  const common = {
+    bounty: isAbsent(hire.bounty) ? null : usdg(hire.bounty),
+    foot: `Escrow on ${label}.${deadline}`,
+    boardMeta: "tasks on Execution Market",
+    boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+  };
+  if (hire.available !== true) {
+    const reason = hire.paused?.reason;
+    return {
+      escrow: "paused",
+      pill: "Paused on this demo",
+      statusLabel: "Hiring is paused:",
+      statusText: typeof reason === "string" && reason.trim() ? reason.trim() : PAUSED_FALLBACK,
+      ...common,
+    };
+  }
   return {
     escrow: "on",
     pill: "Live on this demo",
     statusLabel: "With escrow:",
     statusText: "your task goes to Execution Market, and answers show on the task board below.",
-    bounty: isAbsent(hire.bounty) ? null : usdg(hire.bounty),
-    foot: `Escrow on ${label}.${deadline}`,
-    boardMeta: "tasks on Execution Market",
-    boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+    ...common,
   };
 }

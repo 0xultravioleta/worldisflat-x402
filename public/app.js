@@ -1,5 +1,5 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
-import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=2";
+import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=3";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -34,7 +34,8 @@ async function loadInfo() {
   fact("Paid to", link(info.payToUrl, short(info.payTo)));
   fact("Facilitator", info.facilitator.replace(/^https?:\/\//, ""));
 
-  // escrow is said to run only when this server hires through Execution Market (page-state.js)
+  // escrow is said to run only when this server hires through Execution Market and says a hire would be taken now;
+  // while it is paused, the page says so with the server's own reason (page-state.js)
   const copy = escrowCopy(info);
   document.body.dataset.escrow = copy.escrow;
   $("#escrow-pill").textContent = copy.pill;

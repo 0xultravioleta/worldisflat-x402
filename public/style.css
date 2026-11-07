@@ -99,6 +99,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .steps p { margin: 5px 0 0; text-wrap: pretty; }
 .steps strong { color: var(--text); font-weight: 650; }
 .steps .k { color: var(--mint); font-weight: 650; }
+.strip-note { margin: 0 0 10px 44px; color: var(--muted); font-size: var(--fs-micro); text-wrap: pretty; }
 .strip-foot { margin: auto 0 0 44px; padding-top: 4px; color: var(--muted); font-size: var(--fs-micro); }
 
 /* escrow OFF or PAUSED: the steps describe how it works, so nothing in them reads as running: neutral circles, step 3 dashed amber */

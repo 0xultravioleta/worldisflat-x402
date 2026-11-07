@@ -7,7 +7,7 @@ import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
 import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
-import { newEmState, publicEm, publicPause, type EmHire } from "./emhire.js";
+import { hireExpiry, newEmState, publicEm, publicPause, type EmHire } from "./emhire.js";
 import type { Store, Task } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
@@ -335,7 +335,12 @@ export function createApp({
 
   function hireAvailability() {
     const p = emHire!.unavailable();
-    return { available: p === null, paused: p ? { kind: p.kind, reason: publicPause(p.kind, cfg.chain.label) } : null };
+    return {
+      available: p === null,
+      paused: p ? { kind: p.kind, reason: publicPause(p.kind, cfg.chain.label) } : null,
+      // what becomes of a hire nobody finishes, before anyone pays for one
+      expiry: hireExpiry(cfg.em!.deadlineHours),
+    };
   }
 
   app.get("/api/quote", async (c) => {
@@ -384,7 +389,7 @@ export function createApp({
           const published = emHire.publish(task.id);
           const wait = new Promise<void>((r) => setTimeout(r, publishWaitMs).unref?.());
           const [, cb] = await Promise.all([Promise.race([published, wait]), cashback(ctx.entryId, ctx.payer)]);
-          return c.json({ task: view(store.task(task.id)!), via: "execution-market", poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
+          return c.json({ task: view(store.task(task.id)!), via: "execution-market", poll: `/api/tasks/${task.id}`, expiry: hireExpiry(cfg.em!.deadlineHours), receipt: receipt(ctx, cb) }, 201);
         }
         const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx });
         store.updateLedger(ctx.entryId, { taskId: task.id });

@@ -15,6 +15,8 @@
     "e2e:fork": "tsx scripts/e2e-fork.ts",
     "e2e:testnet": "tsx scripts/e2e-live.ts robinhood-testnet",
     "e2e:mainnet": "tsx scripts/e2e-live.ts robinhood",
+    "e2e:hire": "tsx scripts/e2e-hire.ts",
+    "em:register": "tsx scripts/em-register.ts",
     "verify:testnet": "tsx scripts/verify-testnet.ts",
     "balances": "tsx scripts/balances.ts",
     "reset": "tsx scripts/reset.ts",

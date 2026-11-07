@@ -16,7 +16,7 @@ import { Wallet, type JsonRpcProvider } from "ethers";
 import { createApp } from "../src/app.js";
 import type { Chain } from "../src/chain.js";
 import { loadConfig } from "../src/config.js";
-import type { EmHire } from "../src/emhire.js";
+import { hireExpiry, type EmHire } from "../src/emhire.js";
 import { Store } from "../src/store.js";
 // @ts-expect-error plain JS module shared with the browser
 import { walletPayBlocked } from "../public/x402-browser.js";
@@ -204,7 +204,7 @@ async function openPage(base: string, ethereum?: Eip1193) {
 test("the page shows every amount, the network, the bounty and the deadline this server sends (escrow on, unusual values)", async () => {
   const info = await (await fetch(`${on}/api/info`)).json();
   assert.deepEqual(info.prices, { ask: { standard: "0.375", holder: "0.0625" }, hire: { standard: "12345.125", holder: "6172.5625" } });
-  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: true, paused: null });
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: true, paused: null, expiry: hireExpiry(720) });
   const p = await openPage(on);
   try {
     const { doc, $ } = p;
@@ -233,6 +233,10 @@ test("the page shows every amount, the network, the bounty and the deadline this
     assert.equal(visibleText($("#hire-status")), "With escrow: your task goes to Execution Market, and answers show on the task board below.");
     assert.equal(visibleText($(".steps .lock")), "The worker's pay is locked in escrow: 0.125 USDG.");
     assert.equal(visibleText($("#escrow-foot")), "Escrow on Robinhood Chain Testnet. Deadline 720 h.");
+    // what becomes of a hire nobody finishes, in the server's words, with this server's deadline
+    assert.equal($("#escrow-expiry").hidden, false);
+    assert.equal(visibleText($("#escrow-expiry")), hireExpiry(720));
+    assert.match(visibleText($("#escrow-expiry")), /within 720 h/);
     // for developers: the network, who is paid, the facilitator, and this server's origin in the curl line
     assert.deepEqual(doc.querySelectorAll("#facts dd").map(visibleText), ["Robinhood Chain Testnet · eip155:46630", short(payTo), facilitatorHost]);
     assert.equal($("[data-origin]").textContent, on);
@@ -250,7 +254,7 @@ test("the page shows every amount, the network, the bounty and the deadline this
 test("with hiring paused (EM_HIRE on, the merchant cannot fund one more escrow) the page says paused, with the server's sentence word for word, never Live", async () => {
   const info = await (await fetch(`${paused}/api/info`)).json();
   const reason = "The wallet that pays the escrow cannot fund one more task right now.";
-  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: false, paused: { kind: "funds", reason } });
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.125", deadlineHours: 720, available: false, paused: { kind: "funds", reason }, expiry: hireExpiry(720) });
   // the 503's detail (a wallet, an amount) is not in /api/info
   assert.ok(!JSON.stringify(info).includes("0x00000000000000000000000000000000000000ee"));
   assert.ok(!JSON.stringify(info).includes("0.25 USDG"));
@@ -264,6 +268,7 @@ test("with hiring paused (EM_HIRE on, the merchant cannot fund one more escrow) 
     assert.equal(visibleText($(".steps .lock")), "The worker's pay is locked in escrow: 0.125 USDG.");
     assert.equal(visibleText($("#escrow-foot")), "Escrow on Robinhood Chain Testnet. Deadline 720 h.");
     assert.equal(visibleText($("#board-meta")), "tasks on Execution Market");
+    assert.equal(visibleText($("#escrow-expiry")), hireExpiry(720));
     // nothing on the page says escrow runs now, and the 503's detail is nowhere on it
     const text = visibleText(doc.body);
     assert.doesNotMatch(text, /\blive\b|with escrow:|goes to Execution Market/i);
@@ -282,6 +287,7 @@ test("on the task board (EM_HIRE off, no $WIF token) the page says escrow is off
     assert.equal(visibleText($("#escrow-pill")), "Off on this demo");
     assert.equal(visibleText($("#hire-status")), "Today, without escrow: your task goes on the task board below, for a person to answer.");
     assert.equal($("#escrow-bounty").hidden, true);
+    assert.equal($("#escrow-expiry").hidden, true);
     assert.equal(visibleText($(".steps .lock")), "The worker's pay is locked in escrow.");
     assert.equal(visibleText($("#escrow-foot")), "Waiting for Execution Market's escrow on Robinhood Chain.");
     assert.equal(visibleText($("#board-meta")), "for workers: claim and answer");

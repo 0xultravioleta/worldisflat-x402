@@ -18,7 +18,7 @@ import type { Chain, Tier } from "../src/chain.js";
 import { CHAINS, ConfigError, loadConfig, type Config, type EmConfig } from "../src/config.js";
 import { EmHttpError, emClient, type Fetch } from "../src/em.js";
 import { emPublishRefusal } from "../src/emguard.js";
-import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, manifestProblem, publicPause, publishRefusal } from "../src/emhire.js";
+import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, hireExpiry, manifestProblem, publicPause, publishRefusal } from "../src/emhire.js";
 import { EscrowRefused, checkPaymentAuth, escrowNetwork, escrowPaymentAuth, escrowReadiness, releaseOrder, typedDataSigner, type BuildPreAuth } from "../src/escrow.js";
 import { Store } from "../src/store.js";
 import { budgetedWif } from "../src/wif.js";
@@ -804,7 +804,7 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   assert.ok(s.em.st.calls.length > 5);
   assert.ok(s.em.st.calls.every((c) => c.wallet === merchant.address));
   const info = (await (await call(s.app, "/api/info")).json()) as Any;
-  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null });
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null, expiry: hireExpiry(24) });
   assert.ok(!JSON.stringify(info).includes(merchant.privateKey.slice(2)));
 });
 
@@ -1637,13 +1637,14 @@ test("/api/info says whether a hire would be taken now and, when not, why, in a 
   assert.deepEqual(await info(unchecked), {
     via: "execution-market", bounty: "0.2", deadlineHours: 24, available: false,
     paused: { kind: "unchecked", reason: "Flat Fee has not reached Execution Market yet." },
+    expiry: hireExpiry(24),
   });
   assert.equal((await hire503(unchecked)).status, 503);
 
   // EM can take it, and the merchant funds it: available, nothing paused
   merchantUsdg = 200_000n;
   const ok = await setup();
-  assert.deepEqual(await info(ok), { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null });
+  assert.deepEqual(await info(ok), { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null, expiry: hireExpiry(24) });
   // one hire takes the one bounty the merchant holds: the next is refused before its 402, and /api/info says so
   assert.equal((await buy(ok.app, buyer, "first")).status, 201);
   const funds = await info(ok);

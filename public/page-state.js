@@ -42,6 +42,7 @@ export function escrowCopy(info) {
       foot: "Waiting for Execution Market's escrow on Robinhood Chain.",
       boardMeta: "for workers: claim and answer",
       boardHow: "Workers: enter your wallet and worker token, claim a task, send the answer.",
+      expiry: null,
     };
   }
   const label = info?.network?.label || "Robinhood Chain";
@@ -51,6 +52,8 @@ export function escrowCopy(info) {
     foot: `Escrow on ${label}.${deadline}`,
     boardMeta: "tasks on Execution Market",
     boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+    // what becomes of a hire nobody finishes, in the server's words (hire.expiry); nothing when it sends none
+    expiry: typeof hire.expiry === "string" && hire.expiry.trim() ? hire.expiry.trim() : null,
   };
   if (hire.available !== true) {
     const reason = hire.paused?.reason;

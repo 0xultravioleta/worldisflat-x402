@@ -43,6 +43,8 @@ async function loadInfo() {
   $("#hire-status-text").textContent = copy.statusText;
   $("#escrow-bounty").hidden = !copy.bounty;
   if (copy.bounty) $("#escrow-bounty-amount").textContent = copy.bounty;
+  $("#escrow-expiry").hidden = !copy.expiry;
+  if (copy.expiry) $("#escrow-expiry").textContent = copy.expiry;
   $("#escrow-foot").textContent = copy.foot;
   $("#board-meta").textContent = copy.boardMeta;
   $("#board-how").textContent = copy.boardHow;

@@ -102,6 +102,19 @@ export function publicPause(kind: HirePauseKind, chainLabel: string): string {
   }
 }
 
+/**
+ * What becomes of a hire nobody finishes, as /api/info and the 201 of /api/hire tell the buyer: what this code does
+ * (onPublished cancels a task nobody was assigned by its deadline, before anything is locked; a task EM expires after
+ * an assignment ends expired, and EM sends its locked escrow back to the merchant) and nothing more. No refund either way.
+ */
+export function hireExpiry(deadlineHours: number): string {
+  return (
+    `The task is on Execution Market, for any of its people to take. If no one takes it within ${deadlineHours} h, it expires ` +
+    "and Flat Fee cancels it there: nothing was locked for it. If the person who takes it does not deliver by then, " +
+    "Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+  );
+}
+
 export interface EmHire {
   /** why a new hire is refused before its 402 (Execution Market cannot take it, or the merchant cannot fund it); null when it can run */
   unavailable(): HirePause | null;

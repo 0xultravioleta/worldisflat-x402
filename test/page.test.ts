@@ -208,8 +208,11 @@ test("the escrow wording, word for word: a change to it is a change to this test
     foot: "Waiting for Execution Market's escrow on Robinhood Chain.",
     boardMeta: "for workers: claim and answer",
     boardHow: "Workers: enter your wallet and worker token, claim a task, send the answer.",
+    expiry: null,
   });
-  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: true, paused: null } }), {
+  // the server says what becomes of a hire nobody finishes (src/emhire.ts hireExpiry); the page repeats it as sent
+  const expiry = "If no one takes it within 72 h, it expires.";
+  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: true, paused: null, expiry } }), {
     escrow: "on",
     pill: "Live on this demo",
     statusLabel: "With escrow:",
@@ -218,10 +221,11 @@ test("the escrow wording, word for word: a change to it is a change to this test
     foot: "Escrow on Robinhood Chain. Deadline 72 h.",
     boardMeta: "tasks on Execution Market",
     boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+    expiry,
   });
   // paused: the server's sentence, as it sent it
   const reason = "The wallet that pays the escrow cannot fund one more task right now.";
-  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: false, paused: { kind: "funds", reason } } }), {
+  assert.deepEqual(escrowCopy({ network: { label: "Robinhood Chain" }, hire: { via: "execution-market", bounty: "0.125", deadlineHours: 72, available: false, paused: { kind: "funds", reason }, expiry } }), {
     escrow: "paused",
     pill: "Paused on this demo",
     statusLabel: "Hiring is paused:",
@@ -230,7 +234,10 @@ test("the escrow wording, word for word: a change to it is a change to this test
     foot: "Escrow on Robinhood Chain. Deadline 72 h.",
     boardMeta: "tasks on Execution Market",
     boardHow: "Tasks hired through Execution Market, and where each one stands. People take them on Execution Market.",
+    expiry,
   });
+  // no expiry from the server, or not a string: nothing is said
+  for (const bad of [undefined, null, "", "  ", 42, ["x"]]) assert.equal(escrowCopy({ hire: { via: "execution-market", available: true, expiry: bad } }).expiry, null, String(bad));
   // the first screen's fixed text: headline, subtitle, button, the line under it, and the four steps
   const html = readFileSync("public/index.html", "utf8");
   const text = (re: RegExp) => {

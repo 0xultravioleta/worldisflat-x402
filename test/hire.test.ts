@@ -890,6 +890,8 @@ test("e2e-hire's wiring: the buyer pays exactly the approval, to PAY_TO, on main
   });
   // the merchant: MERCHANT_PRIVATE_KEY's wallet, else PAY_TO
   assert.equal(w.merchant, merchant.address);
+  const shop = Wallet.createRandom().address;
+  assert.equal(hireWiring(loadConfig({ ...RUN_ENV, PAY_TO: shop }), plan, RUN_ENV).merchant, merchant.address);
   const noKey = loadConfig({ ...RUN_ENV, WIF_CASHBACK: "0", MERCHANT_PRIVATE_KEY: "" });
   assert.equal(hireWiring(noKey, plan, RUN_ENV).merchant, noKey.payTo);
   // each worker call waits a minute: an apply also has EM mint the worker's identity

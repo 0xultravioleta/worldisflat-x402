@@ -632,6 +632,42 @@ test("PAY_TO apart from the merchant: PAY_TO gets the price, the merchant locks 
   assert.deepEqual(o.problems, []);
   assert.equal(o.deltas!.payToUsdg, 250_000n);
   assert.equal(o.deltas!.merchantUsdg, -200_000n);
+  // and a PAY_TO that got less than the price fails the run
+  const short = world({ payTo: shop });
+  await short.hire.tick();
+  let paid = false;
+  const real = short.deps.balances;
+  const deps: HireDeps = {
+    ...short.deps,
+    pay: async (b) => {
+      const r = await short.deps.pay(b);
+      paid = true;
+      return r;
+    },
+    balances: { ...real, usdg: async (a) => (await real.usdg(a)) - (paid && a === shop ? 10_000n : 0n) },
+  };
+  const bad = await runHire(planOf({ ...RUN_ENV, PAY_TO: shop }), loadConfig({ ...RUN_ENV, PAY_TO: shop }), deps);
+  assert.equal(bad.ok, false);
+  assert.match(bad.problems.join("\n"), /PAY_TO's USDG moved 0.24, not \+0.25/);
+});
+
+test("the buyer's answer must be the worker's text: an answer that is not fails the run", async () => {
+  const w = world();
+  await w.hire.tick();
+  const deps: HireDeps = { ...w.deps, worker: { ...w.deps.worker!, submit: (id) => w.deps.worker!.submit(id, "some other text") } };
+  const o = await runHire(planOf(), runCfg(), deps);
+  assert.equal(o.ok, false);
+  assert.deepEqual(o.problems, ["the buyer's answer on Flat Fee is not the text the worker delivered"]);
+});
+
+test("a buyer without the price in USDG is not charged at all: the run stops before paying", async () => {
+  const w = world();
+  w.ledger.usdg.set(buyer.address.toLowerCase(), 249_999n);
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), w.deps);
+  assert.equal(o.ok, false);
+  assert.match(o.problems[0], /the buyer holds 0.249999 USDG, below the 0.25 it would pay/);
+  assert.equal(w.pays(), 0);
 });
 
 // ------------------------------------------------------------------------------------------------- nobody finishes it

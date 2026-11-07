@@ -798,6 +798,30 @@ test("an apply or a delivery that got no answer (a timeout, a 5xx) is tried agai
     assert.equal(failed, 2, which);
     assert.equal(o.seen.filter((x) => x.source === "worker" && /got no answer/.test(x.what)).length, 2, which);
   }
+  // the first apply landed but its answer was lost: the next one is EM's 409, and the run goes on
+  {
+    const w = world();
+    await w.hire.tick();
+    let calls = 0;
+    const real = w.deps.worker!;
+    const deps: HireDeps = {
+      ...w.deps,
+      worker: {
+        ...real,
+        apply: async (id) => {
+          if (++calls === 1) {
+            await real.apply(id);
+            throw new EmWorkerError(0, "unreachable", "Execution Market did not answer within 20000 ms");
+          }
+          throw new EmWorkerError(409, "already_applied", "Execution Market answered 409 already_applied");
+        },
+      },
+    };
+    const o = await runHire(planOf(), runCfg(), deps);
+    assert.deepEqual(o.problems, []);
+    assert.equal(calls, 2);
+    assert.ok(o.seen.some((x) => x.source === "worker" && /apply: already applied/.test(x.what)));
+  }
   // a refusal with a verdict still stops the run
   const w = world();
   await w.hire.tick();

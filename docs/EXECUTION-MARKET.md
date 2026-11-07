@@ -11,8 +11,10 @@ payment-config lists the Robinhood Chain escrow with USDG (recorded on 2026-11-0
 `test/fixtures/em-payment-config.json`), and the SDK has Robinhood Chain (4663) rows from 2.114.0, the version pinned
 here (2.106.0 had none, so every hire was refused). Robinhood Chain testnet (46630) has no escrow: EM's operator has no
 code there and the SDK has no row for it. Whenever a check fails, a server with the knob on answers `503` to a hire
-**before** the 402 (see below), so nobody pays for a task that cannot run. The knob stays off on the live demo until
-it is turned on there.
+**before** the 402 (see below), so nobody pays for a task that cannot run. The live demo has run with the knob on since
+7 Nov 2026; its first hire on mainnet, with every transaction, is in the README
+([A hire through Execution Market](../README.md#a-hire-through-execution-market-7-nov-2026)): its worker was a team test
+wallet driven by a script, not a person.
 
 ## The flow
 

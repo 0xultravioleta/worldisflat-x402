@@ -515,6 +515,37 @@ test("the run fails when a leg is missing: no $WIF reward to the worker", async 
   assert.match(o.problems.join("\n"), /the worker's \$WIF moved \+0, not \+50/);
 });
 
+test("the verdict reads the chain: a buyer charged more, a worker paid outside the bounty less EM's fee, or a short cashback fails the run", async () => {
+  // what the chain would say if it did not match the server's story: each reading is off from the real one by `off`
+  const cases: { what: string; off: (who: string, kind: "usdg" | "wif") => bigint; why: RegExp }[] = [
+    { what: "the buyer paid 0.01 more", off: (who, k) => (k === "usdg" && who === buyer.address ? -10_000n : 0n), why: /the buyer's USDG moved -0.26, not -0.25/ },
+    { what: "the worker got less than the bounty less EM's largest fee", off: (who, k) => (k === "usdg" && who === workerWallet.address ? -20_000n : 0n), why: /the worker's USDG moved \+0.154, outside 0.164..0.20/ },
+    { what: "the worker got more than the bounty", off: (who, k) => (k === "usdg" && who === workerWallet.address ? 30_000n : 0n), why: /the worker's USDG moved \+0.204, outside/ },
+    { what: "the buyer's cashback came short", off: (who, k) => (k === "wif" && who === buyer.address ? -1n : 0n), why: /the buyer's \$WIF moved \+9.999999999999999999, not the \+10 cashback/ },
+  ];
+  for (const c of cases) {
+    const w = world();
+    await w.hire.tick();
+    let after = false; // the readings are off only once the hire was paid
+    const real = w.deps.balances;
+    const deps: HireDeps = {
+      ...w.deps,
+      pay: async (b) => {
+        const r = await w.deps.pay(b);
+        after = true;
+        return r;
+      },
+      balances: {
+        usdg: async (a) => (await real.usdg(a)) + (after ? c.off(a, "usdg") : 0n),
+        wif: async (a) => (await real.wif(a)) + (after ? c.off(a, "wif") : 0n),
+      },
+    };
+    const o = await runHire(planOf(), runCfg(), deps);
+    assert.equal(o.ok, false, c.what);
+    assert.match(o.problems.join("\n"), c.why, c.what);
+  }
+});
+
 test("manual mode: the run prints the EM task and the exact text, and waits for a person to apply and deliver", async () => {
   const w = world();
   await w.hire.tick();

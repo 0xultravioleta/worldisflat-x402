@@ -299,6 +299,21 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
     return out(false, null, null);
   }
 
+  // another hire still open on the server moves the same wallets (its escrow, its refund, its reward), and the checks
+  // below read whole balances: the run waits until it ended
+  let open: any[] = [];
+  try {
+    const all = await d.flatfee("/api/tasks");
+    open = Array.isArray(all) ? all.filter((t: any) => t?.via === "em" && t?.status !== "done" && t?.status !== "expired") : [];
+  } catch (e) {
+    problems.push(`cannot read /api/tasks before paying: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+    return out(false, null, null);
+  }
+  if (open.length) {
+    problems.push(`${open.length} other hire${open.length > 1 ? "s are" : " is"} still open on the server (${open.slice(0, 3).map((t) => String(t.id).slice(0, 12)).join(", ")}): its escrow and reward move the same wallets; run again once it is done or expired: nothing paid`);
+    return out(false, null, null);
+  }
+
   const before = { payerUsdg: await d.balances.usdg(d.payer), payToUsdg: await d.balances.usdg(d.payTo), merchantUsdg: await d.balances.usdg(d.merchant), workerUsdg: await d.balances.usdg(plan.worker), workerWif: await d.balances.wif(plan.worker), payerWif: await d.balances.wif(d.payer) };
   note("chain", `before: buyer ${formatUnits(before.payerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(before.payerWif, WIF_DECIMALS)} $WIF; worker ${formatUnits(before.workerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(before.workerWif, WIF_DECIMALS)} $WIF; pay-to ${formatUnits(before.payToUsdg, USDG_DECIMALS)} USDG`);
   if (before.payerUsdg < price) {
@@ -307,7 +322,13 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   }
 
   // 1. the buyer pays the hire over x402
-  const r = await d.pay({ request: plan.request });
+  let r: { status: number; body: Record<string, any> };
+  try {
+    r = await d.pay({ request: plan.request });
+  } catch (e) {
+    problems.push(`the payment call failed (${String((e as Error)?.message ?? e).slice(0, 200)}): it may have settled; read the buyer's wallet on the explorer before any re-run`);
+    return out(false, null, null);
+  }
   const receipt = r.body?.receipt ?? {};
   txs.settle = isTx(receipt.settleTx) ? receipt.settleTx : null;
   note("flatfee", `POST /api/hire: HTTP ${r.status}${r.body?.error ? ` ${String(r.body.error).slice(0, 200)}` : ""}`, txs.settle ?? undefined);
@@ -325,6 +346,16 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   let emTaskId: string | null = null;
   let applied = false;
   let delivered = false;
+  const tries = { apply: 0, submit: 0 };
+  const statusOf = (err: unknown) => {
+    const s = (err as { status?: unknown } | null)?.status;
+    return typeof s === "number" ? s : null;
+  };
+  // no verdict from EM: the call may have landed; the task's status on Flat Fee says what happened
+  const noVerdict = (err: unknown) => {
+    const s = statusOf(err);
+    return s === 0 || s === 408 || s === 429 || (s !== null && s >= 500);
+  };
   const follow = async () => {
     task = await d.flatfee(`/api/tasks/${encodeURIComponent(taskId)}`);
     const line = snapshot(task);
@@ -351,7 +382,7 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
     if (task?.status === "done") break;
     // someone else got the task: nothing is delivered for it; it finishes (or expires) without this run
     if (task?.worker && !sameAddr(task.worker, plan.worker)) {
-      problems.push(`Flat Fee assigned another applicant (${task.worker}), not the test worker: nothing delivered, stopping`);
+      problems.push(`Flat Fee assigned another applicant (${String(task.worker).slice(0, 6)}…${String(task.worker).slice(-4)}), not the test worker: nothing delivered, stopping`);
       break;
     }
     if (emTaskId && !applied) {
@@ -361,9 +392,17 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
           const a = await d.worker.apply(emTaskId);
           note("worker", `POST /api/v1/tasks/${emTaskId}/apply: HTTP ${a.status}`);
         } catch (err) {
-          note("worker", `apply refused: ${String((err as Error)?.message ?? err).slice(0, 200)}`);
-          problems.push("Execution Market did not take the worker's application");
-          break;
+          const why = String((err as Error)?.message ?? err).slice(0, 200);
+          if (statusOf(err) === 409) {
+            note("worker", `apply: already applied (${why})`);
+          } else if (noVerdict(err) && ++tries.apply < 5) {
+            note("worker", `apply got no answer (${why}); following the task, trying again on the next pass`);
+            applied = false;
+          } else {
+            note("worker", `apply refused: ${why}`);
+            problems.push("Execution Market did not take the worker's application");
+            break;
+          }
         }
       } else {
         d.log(`\n>>> on execution.market, as the worker ${plan.worker}: apply to task ${emTaskId}, then, once it is assigned, deliver this text answer exactly:\n>>> ${plan.answer}\n`);
@@ -378,9 +417,17 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
           const s = await d.worker.submit(emTaskId!, plan.answer);
           note("worker", `POST /api/v1/tasks/${emTaskId}/submit (text_response): HTTP ${s.status}`);
         } catch (err) {
-          note("worker", `delivery refused: ${String((err as Error)?.message ?? err).slice(0, 200)}`);
-          problems.push("Execution Market did not take the worker's delivery");
-          break;
+          const why = String((err as Error)?.message ?? err).slice(0, 200);
+          if (statusOf(err) === 409) {
+            note("worker", `delivery: the task no longer takes one (${why}); following it`);
+          } else if (noVerdict(err) && ++tries.submit < 5) {
+            note("worker", `delivery got no answer (${why}); following the task, trying again on the next pass while it still takes one`);
+            delivered = false;
+          } else {
+            note("worker", `delivery refused: ${why}`);
+            problems.push("Execution Market did not take the worker's delivery");
+            break;
+          }
         }
       }
     }
@@ -474,7 +521,9 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   if (deltas.merchantUsdg !== merchantWant) problems.push(`the merchant's USDG moved ${formatUnits(deltas.merchantUsdg, USDG_DECIMALS)}, not ${formatUnits(merchantWant, USDG_DECIMALS)} (${oneWallet ? "the price in, the bounty out to the escrow" : "the bounty out to the escrow"}; any other payment to it during the run counts too)`);
   if (!oneWallet && deltas.payToUsdg !== price) problems.push(`PAY_TO's USDG moved ${formatUnits(deltas.payToUsdg, USDG_DECIMALS)}, not +${plan.approved.spend}`);
   // the worker gets the bounty less EM's fee, never more than the bounty, never less than its largest fee allows
-  const least = (bounty * BigInt(10_000 - d.fees.maxBps)) / 10_000n;
+  // clamped, so the least the worker may get is never zero: EM fee bounds of 100 % or more are not believed
+  const maxBps = Math.min(Math.max(Math.trunc(d.fees.maxBps), 0), 9_999);
+  const least = (bounty * BigInt(10_000 - maxBps)) / 10_000n;
   if (deltas.workerUsdg > bounty || deltas.workerUsdg < least) problems.push(`the worker's USDG moved +${formatUnits(deltas.workerUsdg, USDG_DECIMALS)}, outside ${formatUnits(least, USDG_DECIMALS)}..${plan.approved.bounty} (the bounty less EM's fee)`);
   if (d.fees.pct !== null) {
     const fee = (bounty * BigInt(Math.round(d.fees.pct * 10_000))) / 10_000n;

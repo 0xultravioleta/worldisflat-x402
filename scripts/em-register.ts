@@ -28,7 +28,8 @@ if (refusal) {
 }
 
 // the merchant signs as Flat Fee does on Execution Market: ERC-8128, keyid on Robinhood Chain (EM looks identities up on Base whatever the keyid's chain)
-const { call, send } = emCaller({ apiUrl, auth: { kind: "erc8128", wallet, chainId: CHAINS.robinhood.chainId, client: null } });
+// EM waits up to 20 s for the mint before it answers 202: the client waits longer than that
+const { call, send } = emCaller({ apiUrl, auth: { kind: "erc8128", wallet, chainId: CHAINS.robinhood.chainId, client: null }, timeoutMs: 60_000 });
 const outcome = await runRegister(
   { merchant: wallet.address, agentUri, confirm: process.env.CONFIRM_EM_REGISTER?.trim() || null, pollMs: 5_000, timeoutMs: 10 * 60_000 },
   {

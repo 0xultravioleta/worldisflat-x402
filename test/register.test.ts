@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { Hono } from "hono";
 import { Wallet, getAddress } from "ethers";
 import { policyFromPreset, verifyRequest, type NonceStore } from "uvd-x402-sdk/erc8128";
-import { emCaller } from "../scripts/lib/emworker.js";
+import { EmWorkerError, emCaller } from "../scripts/lib/emworker.js";
 import { registerPlanRefusal, runRegister, type RegisterDeps, type RegisterPlan } from "../scripts/lib/register.js";
 
 type Any = Record<string, any>;
@@ -174,6 +174,24 @@ test("an unreadable status, an unknown one, or a poll path that is not EM's own:
   const o = await runRegister(plan, deps(async () => ({ status: 200, body: { status: "none" } })));
   assert.equal(o.status, "refused");
   assert.equal(registered, 1);
+});
+
+test("a registration EM did not answer in time may have gone through: the run says so, and the next run follows it instead of sending another", async () => {
+  const s = setup("none");
+  // EM took it and answers 202 too late for the client
+  const late: RegisterDeps = {
+    ...s.deps,
+    register: async (body) => {
+      await s.deps.register(body);
+      throw new EmWorkerError(0, "unreachable", "Execution Market did not answer within 60000 ms");
+    },
+  };
+  const o = await runRegister(s.plan({ confirm: s.wallet.address }), late);
+  assert.deepEqual([o.ok, o.status, o.sent], [false, "unknown", 1]);
+  assert.match(o.message, /it may have gone through\. Do NOT send it again by hand: run this again/);
+  const again = await runRegister(s.plan({ confirm: s.wallet.address }), s.deps);
+  assert.deepEqual([again.ok, again.status, again.sent], [true, "completed", 0]);
+  assert.equal(s.em.st.registrations.length, 1);
 });
 
 test("the plan: an https agent_uri of at most 2048 characters, and an address", () => {

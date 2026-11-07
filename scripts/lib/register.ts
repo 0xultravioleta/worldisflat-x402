@@ -104,6 +104,11 @@ export async function runRegister(plan: RegisterPlan, d: RegisterDeps): Promise<
     reg = await d.register({ network: "base", agent_uri: plan.agentUri });
   } catch (e) {
     const m = String((e as Error)?.message ?? e).slice(0, 200);
+    const s = (e as { status?: unknown } | null)?.status;
+    // no answer in time: EM may have taken it (it waits a while before answering 202)
+    if (s === 0 || (typeof s === "number" && s >= 500)) {
+      return done(false, "unknown", `Execution Market did not answer the registration (${m}): it may have gone through. Do NOT send it again by hand: run this again, it reads the status first and follows a registration in flight`);
+    }
     return done(false, "failed", `Execution Market did not take the registration (${m}); do NOT register again before reading /api/v1/reputation/register/wallet/${merchant}?network=base`);
   }
   if (reg.status === 202 || reg.body?.registration_id) return follow(reg.body?.poll ?? (reg.body?.registration_id ? `/api/v1/reputation/register/${reg.body.registration_id}` : null));

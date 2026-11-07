@@ -214,7 +214,7 @@ export function createApp({
       // through Execution Market, a hire that could not be published or funded is refused before anyone pays for it
       const paused = route === "hire" ? (emHire?.unavailable() ?? null) : null;
       // the same fixed sentence /api/info shows: anyone can ask without paying, so EM's words, the merchant wallet and
-      // the amounts of the detail stay in the server's log (written when the pause began)
+      // the amounts of the detail stay off the wire (EM's refusals and escrow problems are logged when they begin)
       if (paused) {
         const reason = publicPause(paused.kind, cfg.chain.label);
         return c.json({ error: `hiring is paused: ${reason}`, paused: { kind: paused.kind, reason }, retryable: true }, 503);

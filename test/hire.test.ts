@@ -23,7 +23,7 @@ import { createEmHire, hireExpiry } from "../src/emhire.js";
 import { escrowPaymentAuth, escrowReadiness, releaseOrder } from "../src/escrow.js";
 import { Store } from "../src/store.js";
 import { budgetedWif } from "../src/wif.js";
-import { emWorker } from "../scripts/lib/emworker.js";
+import { EmWorkerError, emWorker } from "../scripts/lib/emworker.js";
 import { hirePlanRefusal, origin, publishHint, remoteHireRefusal, rpcRefusal, runHire, type HireDeps, type HirePlan } from "../scripts/lib/hire.js";
 // @ts-expect-error plain JS module shared with the browser
 import { paymentHeader, typedDataFor } from "../public/x402-browser.js";
@@ -89,8 +89,8 @@ function emDouble(ledger: Ledger) {
     executors: new Map<string, string>(),
     /** a dashboard session: token -> wallet */
     sessions: new Map<string, string>(),
-    /** the X-EM-Client value this double counts as a person reached through an agent */
-    humanClient: null as string | null,
+    /** the client value the operator approved for the test worker */
+    approvedClient: null as string | null,
     /** every publish, as Flat Fee sent it */
     creates: [] as Any[],
     /** EM refuses reputation_network: robinhood at publish, as its route does with that network turned off */
@@ -127,8 +127,7 @@ function emDouble(ledger: Ledger) {
       const v = await verifyRequest({ method: c.req.method, url: c.req.url, headers: Object.fromEntries(c.req.raw.headers), rawBody: bytes.length ? bytes : undefined }, policy);
       if (!v.ok) return c.json({ error: v.code, message: v.message }, v.status as 401);
       c.set("wallet", getAddress(v.wallet));
-      // a signature from a script is an agent, unless it comes from the client the double is told to count as a person
-      const viaAgent = st.humanClient !== null && c.req.header("x-em-client")?.toLowerCase() === st.humanClient;
+      const viaAgent = st.approvedClient !== null && c.req.header("x-em-client")?.toLowerCase() === st.approvedClient;
       c.set("type", viaAgent ? "human_via_agent" : "agent");
       c.set("kind", viaAgent ? "human_via_agent" : "autonomous_agent");
     }
@@ -313,7 +312,7 @@ before(() => {
 });
 
 /** a Flat Fee with EM_HIRE on (the deploy's shape, on mainnet), Execution Market's double, and the run's deps */
-function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | null; payTo?: string; slowReward?: boolean } = {}) {
+function world(opts: { workerAuth?: "token" | "erc8128"; approvedClient?: string | null; payTo?: string; slowReward?: boolean } = {}) {
   const payTo = opts.payTo ?? merchant.address;
   // the worker's $WIF is mined a while after Flat Fee marked the task done (src/emhire.ts finish): held until a later wait
   let heldReward: (() => void) | null = null;
@@ -326,7 +325,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | 
   ledger.wif.set(merchant.address.toLowerCase(), 1034n * W);
   const em = emDouble(ledger);
   em.st.sessions.set(sessionToken, workerWallet.address);
-  em.st.humanClient = opts.humanClient ?? null;
+  em.st.approvedClient = opts.approvedClient ?? null;
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-hire-e2e-"));
   dirs.push(dir);
   const loaded = loadConfig({
@@ -379,7 +378,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | 
   const workerClient = emWorker({
     apiUrl: "https://em.test",
     fetch: em.fetch,
-    auth: opts.workerAuth === "erc8128" ? { kind: "erc8128", wallet: workerWallet, chainId: 4663, client: opts.humanClient ?? null } : { kind: "token", token: sessionToken, address: workerWallet.address },
+    auth: opts.workerAuth === "erc8128" ? { kind: "erc8128", wallet: workerWallet, chainId: 4663, client: opts.approvedClient ?? null } : { kind: "token", token: sessionToken, address: workerWallet.address },
   });
   let pays = 0;
   const lines: string[] = [];
@@ -463,7 +462,7 @@ test("e2e:hire against the doubles: paid, published, applied, escrow locked, del
 });
 
 test("e2e:hire with a worker that signs ERC-8128 as the operator's approved client: assigned and paid the same way", async () => {
-  const w = world({ workerAuth: "erc8128", humanClient: "an-approved-client" });
+  const w = world({ workerAuth: "erc8128", approvedClient: "an-approved-client" });
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), w.deps);
   assert.deepEqual(o.problems, []);
@@ -478,7 +477,7 @@ test("e2e:hire with a worker that signs ERC-8128 as the operator's approved clie
 
 test("a worker Execution Market lists as an agent is never assigned: the run times out saying so, and nothing is delivered", async () => {
   // what the plan's rules refuse up front (no WORKER_EM_CLIENT), forced here to show why
-  const w = world({ workerAuth: "erc8128", humanClient: null });
+  const w = world({ workerAuth: "erc8128", approvedClient: null });
   await w.hire.tick();
   const o = await runHire({ ...planOf(), timeoutMs: 120_000 }, runCfg(), w.deps);
   assert.equal(o.ok, false);
@@ -504,7 +503,8 @@ test("someone else applies first and gets the task: the run stops without delive
   };
   const o = await runHire(planOf(), runCfg(), deps);
   assert.equal(o.ok, false);
-  assert.match(o.problems.join("\n"), new RegExp(`assigned another applicant \\(${stranger}\\)`));
+  assert.ok(o.problems.join("\n").includes(`assigned another applicant (${stranger.slice(0, 6)}…${stranger.slice(-4)})`), o.problems.join("\n"));
+  assert.ok(!o.problems.join("\n").includes(stranger));
   assert.equal([...w.em.st.subs.values()].flat().length, 0);
 });
 
@@ -614,7 +614,7 @@ test("the worker's $WIF is mined after Flat Fee marked the task done: the run wa
 });
 
 test("an approval that came back without its payment tx: the release tx is the one EM shows the worker on the task", async () => {
-  const w = world({ workerAuth: "erc8128", humanClient: "an-approved-client" });
+  const w = world({ workerAuth: "erc8128", approvedClient: "an-approved-client" });
   w.em.st.approveWithoutTx = true;
   await w.hire.tick();
   const o = await runHire(planOf(), runCfg(), w.deps);
@@ -759,6 +759,81 @@ test("the deploy's reputation network goes with every publish; if EM refuses it,
   assert.equal(((await (await w.call("/api/info")).json()) as Any).hire.paused.kind, "refused");
   assert.equal(publishHint("Execution Market answered 403 identity_required: no identity"), "the merchant wallet has no ERC-8004 identity on Base: run npm run em:register (once), then redeploy; hiring is paused there until then");
   assert.equal(publishHint("nobody took the task before its deadline"), null);
+});
+
+// ------------------------------------------------------------------------------------------------- re-runs and lost answers
+test("another hire still open on the server: the run refuses before paying, since its escrow and reward move the same wallets", async () => {
+  const w = world();
+  await w.hire.tick();
+  // a first run that left its hire open: someone else was assigned and the run stopped
+  const stranger = Wallet.createRandom().address;
+  const first = await runHire(planOf(), runCfg(), {
+    ...w.deps,
+    worker: { ...w.deps.worker!, apply: async (id) => (w.em.stranger(id, stranger), w.deps.worker!.apply(id)) },
+  });
+  assert.equal(first.ok, false);
+  const paidOnce = w.pays();
+  const again = await runHire(planOf(), runCfg(), w.deps);
+  assert.equal(again.ok, false);
+  assert.match(again.problems[0], /1 other hire is still open on the server \([0-9a-f]{8}\): .*nothing paid/);
+  assert.equal(w.pays(), paidOnce);
+});
+
+test("an apply or a delivery that got no answer (a timeout, a 5xx) is tried again while the task is followed, not a failure", async () => {
+  for (const which of ["apply", "submit"] as const) {
+    const w = world();
+    await w.hire.tick();
+    let failed = 0;
+    const real = w.deps.worker!;
+    const lost = async () => {
+      failed++;
+      throw new EmWorkerError(0, "unreachable", "Execution Market did not answer within 20000 ms");
+    };
+    const deps: HireDeps = {
+      ...w.deps,
+      worker: which === "apply" ? { ...real, apply: async (id) => (failed < 2 ? lost() : real.apply(id)) } : { ...real, submit: async (id, t) => (failed < 2 ? lost() : real.submit(id, t)) },
+    };
+    const o = await runHire(planOf(), runCfg(), deps);
+    assert.deepEqual(o.problems, [], which);
+    assert.equal(failed, 2, which);
+    assert.equal(o.seen.filter((x) => x.source === "worker" && /got no answer/.test(x.what)).length, 2, which);
+  }
+  // a refusal with a verdict still stops the run
+  const w = world();
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), { ...w.deps, worker: { ...w.deps.worker!, apply: async () => { throw new EmWorkerError(403, "forbidden", "Execution Market answered 403"); } } });
+  assert.deepEqual(o.problems, ["Execution Market did not take the worker's application"]);
+});
+
+test("a payment call that throws still gives an outcome, and says the hire may have been paid", async () => {
+  const w = world();
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), { ...w.deps, pay: async () => { throw new Error("socket hang up"); } });
+  assert.equal(o.ok, false);
+  assert.match(o.problems[0], /the payment call failed \(socket hang up\): it may have settled; read the buyer's wallet on the explorer before any re-run/);
+});
+
+test("the worker must get paid something, whatever fee bound EM serves", async () => {
+  for (const maxBps of [10_000, 25_000, -5]) {
+    const w = world();
+    await w.hire.tick();
+    const real = w.deps.balances;
+    let paid = false;
+    const deps: HireDeps = {
+      ...w.deps,
+      fees: { maxBps, pct: null },
+      pay: async (b) => {
+        const r = await w.deps.pay(b);
+        paid = true;
+        return r;
+      },
+      // the escrow paid the worker nothing
+      balances: { ...real, usdg: async (a) => (await real.usdg(a)) - (paid && a === workerWallet.address ? 174_000n : 0n) },
+    };
+    const o = await runHire(planOf(), runCfg(), deps);
+    assert.equal(o.ok, false, String(maxBps));
+    assert.match(o.problems.join("\n"), /the worker's USDG moved \+0, outside/, String(maxBps));
+  }
 });
 
 // ------------------------------------------------------------------------------------------------- the rules

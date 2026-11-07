@@ -100,9 +100,10 @@ You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fo
 1. `git clone https://github.com/0xultravioleta/worldisflat-x402 && cd worldisflat-x402 && npm install`
 2. **`npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet with the real
    USDG and $WIF contracts, and has already paid for one question and one hire task from a throwaway wallet. You see
-   both rows under **Paid calls**, each with its settlement and its $WIF cashback, and the task under **Task board**.
-   Paste the worker token `demo`, enter any address, click **claim**, type an answer and click **complete**: the task
-   turns `done` and the worker receives 50 $WIF. The **Pay … with wallet** buttons are off on the demo (see Safety). (The tx links point at the real explorer and do not resolve there:
+   both rows under **Paid calls**, each with its settlement and its $WIF cashback, and the task under **Task board**
+   (both open on their own on the fork). Enter any address and the worker token `demo`, click **Claim**, type an answer
+   and click **Complete**: the task turns `done` and the worker receives 50 $WIF. The **Pay …** buttons are off on the
+   demo (see Safety). (The tx links point at the real explorer and do not resolve there:
    those transactions only exist on the fork.)
 3. **`npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
    terms, unpaid rejection of bad input, a paid question through the SDK, USDG moving payer → merchant, the settlement

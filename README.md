@@ -3,7 +3,7 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Paid calls send **$WIF** back (up to a daily budget), and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: `[VIDEO_URL]` · Live demo: https://flatfee.ultravioletadao.xyz ·
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: https://youtu.be/oRGfZMNiinI · Live demo: https://flatfee.ultravioletadao.xyz ·
 Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem
@@ -17,11 +17,14 @@ it: an HTTP endpoint that quotes a price in USDG, takes one signature, settles o
 
 - `POST /api/ask` answers questions about Robinhood Chain from live chain data: an address's ETH, USDG and $WIF, the
   latest block and gas, $WIF itself, or which x402 schemes the facilitator settles here.
-- `POST /api/hire` hires a human for a small task. By default the task goes on Flat Fee's own board: a person claims
-  it, answers it, and earns $WIF for it. With `EM_HIRE=on`, Flat Fee hires the human through
-  **[Execution Market](https://execution.market)** instead: it publishes the task there as an agent, the merchant pays
-  the worker's bounty into a USDG escrow on Robinhood Chain, Flat Fee approves the answer (the escrow pays the worker),
-  and the worker earns 50 $WIF on top. See [Hiring through Execution Market](#hiring-a-human-through-execution-market).
+- `POST /api/hire` hires a human for a small task. On the live demo the task goes to
+  **[Execution Market](https://execution.market)** (`EM_HIRE=on` there since 7 Nov 2026): Flat Fee publishes it there
+  as an agent, the merchant wallet pays the worker's bounty into a USDG escrow on Robinhood Chain, Flat Fee approves the
+  answer (the escrow pays the worker), and the worker earns 50 $WIF on top. See
+  [Hiring a human through Execution Market](#hiring-a-human-through-execution-market) and the
+  [first hire it ran on mainnet](#a-hire-through-execution-market-7-nov-2026) (its worker was a team test wallet driven
+  by a script, not a person). With `EM_HIRE` off (the default in the code, and `npm run demo`), the task goes on Flat
+  Fee's own board instead: a person claims it, answers it, and earns $WIF for it.
 - Both answer `402 Payment Required` with a price in USDG on Robinhood Chain. The buyer, a browser wallet or an agent,
   signs an EIP-3009 `transferWithAuthorization` for exactly that amount (no gas, no approve). Ultravioleta's
   open-source x402 facilitator verifies it and settles the USDG on chain, and the endpoint serves the call.
@@ -87,11 +90,38 @@ the $WIF cashback); then:
    anyway, Flat Fee closes the task there instead of asking for more work.
 4. Flat Fee sends the human **50 $WIF** on Robinhood Chain, and the buyer reads the answer at `GET /api/tasks/:id`.
 
-It is **off by default, and off on the live demo** until it is turned on there. Execution Market publishes its
-Robinhood Chain escrow (USDG), and `uvd-x402-sdk` builds escrows there from 2.114.0, the version pinned here. With
-`EM_HIRE=on`, a server answers `503` to a hire before the `402` whenever Execution Market or the merchant wallet cannot
-carry it, so nobody pays for a task that cannot run. The design, the edge cases and the Execution Market API it uses:
-[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md).
+**The live demo has run it since 7 Nov 2026**: `curl -s https://flatfee.ultravioletadao.xyz/api/info` answers
+`hire.via: "execution-market"`, with the bounty (`0.2` USDG), the deadline (`24` hours) and whether a hire would be
+taken right now (`hire.available`). It stays off by default in the code (`EM_HIRE=off`) and in `npm run demo`, which
+keep the task board. Execution Market publishes its Robinhood Chain escrow (USDG), and `uvd-x402-sdk` builds escrows
+there from 2.114.0, the version pinned here. With `EM_HIRE=on`, a server answers `503` to a hire before the `402`
+whenever Execution Market or the merchant wallet cannot carry it, so nobody pays for a task that cannot run. The first
+hire it ran on mainnet, with every transaction, is under
+[A hire through Execution Market](#a-hire-through-execution-market-7-nov-2026); its worker was a team test wallet driven
+by a script, not a person.
+The design, the edge cases and the Execution Market API it uses: [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md).
+
+**If nobody takes the task.** The server says what happens before anyone pays, in `GET /api/info` (`hire.expiry`) and
+again in the `201` of a paid `POST /api/hire`. On the live demo it reads, word for word:
+
+> The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded.
+
+**Flat Fee's identity on Execution Market.** Execution Market requires an ERC-8004 identity on Base of every agent that
+publishes. The merchant wallet (`0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`) has one: agent **1170265** on Base,
+registered once and gaslessly with `npm run em:register` on 7 Nov 2026. Ultravioleta's facilitator (`0x1030…13C7`, the
+one that settles the x402 payments too) minted it and paid the gas
+([0x5323…82c8](https://basescan.org/tx/0x53234d1747e29f3fb73b7bb1a06e2dce77bcdd2cfde54b8f7348389fb46682c8)), then
+transferred it to the merchant
+([0xf79f…74a6](https://basescan.org/tx/0xf79f1e26efa7d1da49a7b46067200f7b93c4ef7a5b34041b3bb79c0e39fb74a6)).
+Execution Market's own public record of it:
+https://api.execution.market/api/v1/reputation/register/wallet/0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6?network=base
+
+**Ratings.** Flat Fee sends no `reputation_network` with its tasks (`EM_REPUTATION_NETWORK` is empty in the deploy's
+settings, `deploy/aws/em-hire.env`), so Execution Market picks the network the ratings are written on. Ratings on
+Robinhood Chain wait until the SDK Execution Market runs on (the Python `uvd-x402-sdk`) lists Robinhood Chain among the
+networks it can relay ratings on; it does not today, and Execution Market refuses a task that asks for it
+(`422 invalid_reputation_network`; the sources are in
+[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md#configuration), `EM_REPUTATION_NETWORK`).
 
 ## Try it (judges: under 5 minutes, no wallet, no funds)
 
@@ -118,8 +148,9 @@ You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fo
    check (`insufficient_funds`), and refuses an expired one (`invalid_timing`).
 5. **`npm test`**: unit tests, no network (CI runs them on every push). They include charge-before-serve and replay
    (`test/settle.test.ts`), the $WIF budget, the mainnet run's approvals, every entry point started with a
-   malformed key (`test/keys.test.ts`), and hiring through Execution Market against a double of its API: publish,
-   escrow, delivery, approval, rejection and timeouts (`test/em.test.ts`).
+   malformed key (`test/keys.test.ts`), hiring through Execution Market against a double of its API: publish,
+   escrow, delivery, approval, rejection and timeouts (`test/em.test.ts`), and this README's and SUBMISSION.md's
+   evidence of the first hire on mainnet against the run's own output (`test/docs.test.ts`).
 
 On a real network: `cp .env.example .env`, set `PAY_TO`, `npm start`, then
 `curl -i -X POST localhost:3000/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'` → you see
@@ -131,9 +162,13 @@ The live demo is the same server on Robinhood Chain mainnet, with the $WIF cashb
 `curl -i -X POST https://flatfee.ultravioletadao.xyz/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'`
 returns the same `402` with the mainnet USDG terms. Paying there spends real USDG: from the page with a wallet, or with
 `npm run buy` and `NETWORK=robinhood`, `PAY_TO=0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`, `FLATFEE_URL=https://flatfee.ultravioletadao.xyz`
-and `CONFIRM_MAINNET_SPEND` set to the amount the `402` asks for.
+and `CONFIRM_MAINNET_SPEND` set to the amount the `402` asks for. A hire paid there (0.50 USDG, 0.25 for $WIF holders)
+publishes a real task on Execution Market, for any of its people to take within 24 hours
+([Hiring a human through Execution Market](#hiring-a-human-through-execution-market)).
 
 ## Real transactions on Robinhood Chain mainnet
+
+### A paid question (2 Nov 2026)
 
 | what | transaction |
 |---|---|
@@ -154,6 +189,36 @@ refuses to settle USDG without the $WIF leg (`scripts/lib/live.ts`, `test/live.t
 that server instead of starting its own, once the server's `/api/info` shows the same network, recipient, USDG, $WIF
 token and holder minimum, ask prices and cashback as `.env`; that server sends the cashback with its own merchant key. The run passes only if the USDG
 moved and the whole cashback landed on chain; this one printed `payer -0.05, pay-to +0.05 (PASS)` and `+10 $WIF`.
+
+### A hire through Execution Market (7 Nov 2026)
+
+One hire bought from the live demo with `npm run e2e:hire`, on 7 Nov 2026 from 18:47 to 18:50 UTC, every payment on
+Robinhood Chain mainnet. **The worker in this run is a test wallet of the team, driven by a script, that declares itself
+to Execution Market as a PayBox client (`human_via_agent`); it is not a person and not a real customer.** No person took
+this task: its text on Execution Market asked to leave it to the test worker. The buyer is the team's payer wallet, the
+same one as on 2 Nov.
+
+| step | what moved | transaction |
+|---|---|---|
+| the buyer pays the hire over x402 (the holder price: the buyer holds $WIF) | 0.25 USDG, buyer → merchant | [0xffea…dd54](https://robinhoodchain.blockscout.com/tx/0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54) |
+| the $WIF cashback | 10 $WIF, merchant → buyer | [0xf431…030a](https://robinhoodchain.blockscout.com/tx/0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a) |
+| Flat Fee publishes the task on Execution Market | task `3175424d-4f83-45cc-b871-92d9dcd3ffe3` | off chain: [its public record](https://api.execution.market/api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3) |
+| the test worker applies, Flat Fee assigns it, and the merchant locks the bounty | 0.20 USDG, merchant → Execution Market's escrow | [0x4eae…43d9](https://robinhoodchain.blockscout.com/tx/0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9) |
+| the test worker delivers a text, Flat Fee approves it, and the escrow pays | 0.174 USDG to the worker: the 0.20 bounty less Execution Market's 13% fee | [0xe72b…e346](https://robinhoodchain.blockscout.com/tx/0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346) |
+| Flat Fee's reward for the delivery it approved | 50 $WIF, merchant → worker | [0xde1a…ade6](https://robinhoodchain.blockscout.com/tx/0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6) |
+
+What the run read on chain at the end: the buyer -0.25 USDG and +10 $WIF, the worker +0.174 USDG and +50 $WIF, and the
+merchant +0.05 USDG (the 0.25 it was paid, less the 0.20 it locked). Execution Market's public record of the task shows
+it `completed`, its escrow `released`, its executor as `human_via_agent` and its publisher as ERC-8004 agent `1170265`.
+
+Wallets: buyer `0x6Ce9DA69A46842DCe90e6a14382Ed06eb1c46af5`, merchant / pay-to
+`0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6`, test worker `0xa329b5FB85cf76E1d235711AFc096B76374271c7` (a team wallet,
+not a person). The run's output, word for word, with its exit code (`rc=0`) on the last line:
+[docs/evidence/e2e-hire-2026-11-07.txt](docs/evidence/e2e-hire-2026-11-07.txt) (`"ok": true`, no problems).
+`test/docs.test.ts` checks this section and the texts that cite the run in [SUBMISSION.md](SUBMISSION.md) against it:
+each transaction's hash, the amounts and the direction written next to it and no other amount, the end balances, the
+time, the task and the wallets. What the run checks, and what it refuses before it pays:
+[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md#the-end-to-end-run-npm-run-e2ehire).
 
 ## Robinhood Chain, USDG, $WIF and x402: where in the code
 
@@ -179,7 +244,8 @@ support since July 2026, see its `docs/ROBINHOOD_CHAIN.md`), and the
 Built during the hackathon, all in this repo (first commit `2e9072e`, 29 Oct 2026): the app (`src/`), the landing page
 and its browser payment code (`public/`), the $WIF tier, cashback and worker reward, the facilitator double and the fork
 runs (`src/double/`, `scripts/`), the tests (`test/`), the deploy recipe (`Dockerfile`, `deploy/aws/`), and hiring
-through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/emhire.ts`, 4 Nov 2026).
+through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/emhire.ts`, from 4 Nov 2026; on the live
+demo since 7 Nov 2026, with `npm run em:register` and `npm run e2e:hire`).
 
 ## Safety
 
@@ -216,8 +282,9 @@ through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/em
   not seen mined.
 - `npm run demo` runs on a fork with mainnet's chain id, so a signature made there is valid on mainnet: the page turns
   browser-wallet payments off on the demo, and only the demo's throwaway wallet signs.
-- Hiring and the task board are off without `WORKER_TOKEN` (compared in constant time). Only the worker who claimed a
-  task can complete it, and the payer of a task cannot claim it. Workers holding the token are trusted operators.
+- The task board is off without `WORKER_TOKEN` (compared in constant time), and so is hiring when it runs on the board
+  (`EM_HIRE` off). Only the worker who claimed a task can complete it, and the payer of a task cannot claim it. Workers
+  holding the token are trusted operators.
 - Through Execution Market, the merchant wallet signs one kind of payment only: a USDG escrow lock of exactly
   `EM_BOUNTY_USDG` for the worker Flat Fee assigned, never a payment straight to a worker. Before it signs, the escrow,
   operator, token collector, chain and token that Execution Market publishes must equal Flat Fee's own configuration;
@@ -230,8 +297,9 @@ through Execution Market behind `EM_HIRE` (`src/em.ts`, `src/escrow.ts`, `src/em
   The merchant also signs, at approval and only when Execution Market asks for it, the payer's release order for that
   escrow. The worker is paid
   $WIF only for a delivery Flat Fee accepted. With `EM_HIRE=on` the merchant wallet holds USDG for the bounties as well
-  as $WIF, and `DATA_DIR` must persist while hires are open: a task in flight lives there, and the Lightsail recipe
-  loses it on every restart (a lost one is still paid by Execution Market's own release, without the $WIF).
+  as $WIF, and `DATA_DIR` must persist while hires are open: a task in flight lives there, and the Lightsail recipe,
+  which the live demo runs on, loses it on every restart (a lost one is still paid by Execution Market's own release,
+  without the $WIF).
 - A corrupt `state.json` stops the server instead of being overwritten; `npm run reset` clears it.
 - If the RPC cannot be read when a payment arrives, the payer is charged the standard price, never less: a holder in that
   moment gets a 402 at the standard price and can pay it or retry.
@@ -258,9 +326,9 @@ container starts with an empty `DATA_DIR`.
 
 ## What's next
 
-Turning on hiring through Execution Market on the live demo once it takes Robinhood Chain escrows (the code is in, behind
-`EM_HIRE`), with the reputation of each task written on Robinhood Chain (ERC-8004), an LLM behind the agent, and
-subscriptions priced in $WIF.
+The ratings of each Execution Market task written on Robinhood Chain (ERC-8004), once the SDK Execution Market runs on
+lists Robinhood Chain as a network it can relay ratings on (today Flat Fee sends no `reputation_network` and Execution
+Market picks the network), an LLM behind the agent, and subscriptions priced in $WIF.
 
 ## Team
 

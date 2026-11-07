@@ -13,14 +13,18 @@
   must use $wif on chain on Robinhood Chain and have a flywheel; proof = a repo the judges can see, a demo video and real
   transactions.
 
-## Edit before 12 Nov 2026, 17:30 UTC: hiring through Execution Market (not pasted yet)
+## Edit before 12 Nov 2026, 17:30 UTC: hiring through Execution Market (ready to paste)
 
-The texts below replace the hiring parts of the submitted answers, now that "hire a human" can run through Execution
-Market (`EM_HIRE=on`, [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md)). **Paste them only once all of this is
-true**, or the form would describe something the judges cannot try: Execution Market takes Robinhood Chain escrows, the
-live demo runs with `EM_HIRE=on`, and one real hire on mainnet produced the escrow lock, its release to the worker and
-the worker's $WIF, with those three links added under *Transactions*. Until then the submitted texts further down stay
-as they are. Saúl or c0der edit the form; nothing here was sent.
+The texts below replace the hiring parts of the submitted answers, now that "hire a human" runs through Execution Market
+on the live demo (`EM_HIRE=on`, [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md)). The three things they waited for
+all hold as of 7 Nov 2026: Execution Market takes Robinhood Chain escrows (USDG); the live demo runs with `EM_HIRE=on`
+(`GET https://flatfee.ultravioletadao.xyz/api/info` answers `hire.via: "execution-market"`); and one hire on mainnet,
+paid in real USDG, produced the escrow lock, its release to the worker and the worker's $WIF, whose links go under
+*Transactions* below (the whole run: [README, *A hire through Execution
+Market*](README.md#a-hire-through-execution-market-7-nov-2026)). **The worker in this run is a test wallet of the team,
+driven by a script, that declares itself to Execution Market as a PayBox client (`human_via_agent`); it is not a person
+and not a real customer.** The buyer is the team's payer wallet too. Every text below that cites the run says so. Until
+they are pasted, the form shows the submitted texts further down. Saúl or c0der edit the form; nothing here was sent.
 
 | field | replace with | length |
 |---|---|---|
@@ -29,26 +33,71 @@ as they are. Saúl or c0der edit the form; nothing here was sent.
 | How it connects to $wif | its point 3) becomes the line below | 137 chars for that point |
 | What happens to $wif | the line below | 150 chars |
 | Why they come back | the line below | 193 chars |
-| Long story, *What's next* | the line below | 140 chars |
+| Transactions | add the block below after the two lines already there | 1303 chars |
+| Wallets | add the block below after the two lines already there | 485 chars |
+| Long story, *What it does* | the block below | 1010 chars |
+| Long story, *Accomplishments* | add the block below after the paragraph already there | 1206 chars |
+| Long story, *What's next* | the line below | 196 chars |
+
+*What it does*:
 
 ```text
 Flat Fee turns an HTTP endpoint into a storefront on Robinhood Chain. Ask the agent a question (live chain data: balances, blocks, gas, $WIF) or hire a human for a small task through Execution Market. The endpoint answers 402 Payment Required with a price in USDG; your wallet or agent signs one EIP-3009 authorization, Ultravioleta's x402 facilitator settles it on chain, and the answer comes back. For a hire, Flat Fee publishes the task on Execution Market, locks the worker's pay in a USDG escrow and approves the answer. Paid calls send $WIF back, holders pay half, workers earn $WIF.
 ```
 
+*How it connects to $wif*, point 3):
+
 ```text
 3) Workers: a human hired through Execution Market whose answer Flat Fee approves is paid by the USDG escrow and receives 50 $WIF on top.
 ```
+
+*What happens to $wif*:
 
 ```text
 The merchant sends the payer 10 $WIF after a settled call, up to 500 $WIF a day, and 50 $WIF to each Execution Market worker whose answer it approves.
 ```
 
+*Why they come back*:
+
 ```text
 Ten paid calls make you a $WIF holder, and holders pay half on every call after that. Execution Market workers return for tasks paid in USDG escrow plus $WIF, which buys them the cheaper price.
 ```
 
+*Transactions*, added after the two lines already there:
+
 ```text
-Reputation for every Execution Market task written on Robinhood Chain (ERC-8004), an LLM behind the agent, and subscriptions priced in $WIF.
+Hire through Execution Market, 7 Nov 2026. The worker in this run is a test wallet of the team, driven by a script, that declares itself to Execution Market as a PayBox client (human_via_agent); it is not a person and not a real customer. The buyer is the team's payer wallet.
+The hire, payer to merchant via the x402 facilitator (0.25 USDG, the holder price): https://robinhoodchain.blockscout.com/tx/0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54
+$WIF cashback to the payer (10 $WIF): https://robinhoodchain.blockscout.com/tx/0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a
+Bounty locked in Execution Market's USDG escrow by the merchant (0.20 USDG): https://robinhoodchain.blockscout.com/tx/0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
+Escrow released to the test worker (0.174 USDG: the 0.20 bounty less Execution Market's 13% fee): https://robinhoodchain.blockscout.com/tx/0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346
+$WIF reward to the test worker (50 $WIF): https://robinhoodchain.blockscout.com/tx/0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6
+The task on Execution Market (3175424d-4f83-45cc-b871-92d9dcd3ffe3): https://api.execution.market/api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3
+```
+
+*Wallets*, added after the two lines already there:
+
+```text
+Test worker (a team wallet driven by a script, not a person): 0xa329b5FB85cf76E1d235711AFc096B76374271c7
+Merchant's ERC-8004 identity on Base, which Execution Market requires of every publisher: agent 1170265, minted by Ultravioleta's facilitator, which paid the gas (https://basescan.org/tx/0x53234d1747e29f3fb73b7bb1a06e2dce77bcdd2cfde54b8f7348389fb46682c8), and transferred to the merchant (https://basescan.org/tx/0xf79f1e26efa7d1da49a7b46067200f7b93c4ef7a5b34041b3bb79c0e39fb74a6)
+```
+
+Long story, *What it does*:
+
+```text
+An HTTP endpoint answers 402 Payment Required with a price in USDG on Robinhood Chain. A wallet or an agent signs one EIP-3009 authorization, Ultravioleta's open-source x402 facilitator settles it on chain, and the endpoint answers the question, or hires a human through Execution Market: Flat Fee publishes the task there, its wallet locks the worker's pay in a USDG escrow on Robinhood Chain, and Flat Fee approves the answer, which releases the escrow to the worker. Paid calls send $WIF back, up to a daily budget; $WIF holders who name their wallet pay half; workers whose answer Flat Fee approves earn 50 $WIF on top. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+```
+
+Long story, *Accomplishments*, added after the paragraph already there:
+
+```text
+On 7 Nov 2026 one hire bought from the live demo ran through Execution Market end to end on Robinhood Chain mainnet: the team's payer wallet paid 0.25 USDG over x402 (https://robinhoodchain.blockscout.com/tx/0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54), Flat Fee published the task on Execution Market, the merchant locked the 0.20 USDG bounty in escrow (https://robinhoodchain.blockscout.com/tx/0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9), Flat Fee approved the delivered text and the escrow paid the worker 0.174 USDG, the bounty less Execution Market's 13% fee (https://robinhoodchain.blockscout.com/tx/0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346), and Flat Fee sent the worker 50 $WIF (https://robinhoodchain.blockscout.com/tx/0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6) and the buyer 10 $WIF cashback (https://robinhoodchain.blockscout.com/tx/0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a). The worker in this run is a test wallet of the team, driven by a script, that declares itself to Execution Market as a PayBox client (human_via_agent); it is not a person and not a real customer.
+```
+
+Long story, *What's next*:
+
+```text
+Ratings of every Execution Market task written on Robinhood Chain (ERC-8004), once the SDK Execution Market runs on can relay them there; an LLM behind the agent; and subscriptions priced in $WIF.
 ```
 
 ## 1. Your team
@@ -146,6 +195,12 @@ Merchant / pay-to (sends the $WIF cashback): 0xb9056196d3D00b4c09ec2E5E123E30b37
 - [x] Repo public since 2026-11-02: https://github.com/0xultravioleta/worldisflat-x402
 - [x] Terms box read and ticked by Saúl; then **submit** (not only save), and screenshot the confirmation.
 - [ ] Optional, after submitting: an update ("dispatch") with the video, and a post from Saúl's account.
+- [x] The hire's five transactions (7 Nov 2026) succeeded on Robinhood Chain mainnet, and every Robinhood Chain hash
+  and amount in the edit above is the one `npm run e2e:hire` printed
+  ([docs/evidence/e2e-hire-2026-11-07.txt](docs/evidence/e2e-hire-2026-11-07.txt), checked by `test/docs.test.ts`). The
+  merchant's identity (agent 1170265 and its two Base transactions) is not in that output: it comes from Execution
+  Market's public record (`GET /api/v1/reputation/register/wallet/<merchant>?network=base`) and Base itself.
+- [ ] The edit above pasted into the form, then the form read back, before 12 Nov 2026, 17:30 UTC.
 
 ## Long story (if a long field exists) · Devpost-style
 

@@ -1,0 +1,147 @@
+Robinhood Chain (eip155:4663): hire on https://flatfee.ultravioletadao.xyz through Execution Market (https://api.execution.market)
+buyer 0x6Ce9DA69A46842DCe90e6a14382Ed06eb1c46af5 pays 0.25 USDG; the merchant locks 0.20 USDG for the worker 0xa329b5FB85cf76E1d235711AFc096B76374271c7 (erc8128); reward 50 $WIF
+2026-11-07T18:47:33.809Z  chain   before: buyer 0.588716 USDG, 1026.439385668474374796 $WIF; worker 0 USDG, 0 $WIF; pay-to 1.06985 USDG
+2026-11-07T18:47:51.438Z  flatfee POST /api/hire: HTTP 201  https://robinhoodchain.blockscout.com/tx/0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54
+2026-11-07T18:47:51.611Z  flatfee status=open em.step=publishing em.status=-
+2026-11-07T18:47:56.784Z  flatfee status=open em.step=published em.status=published em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3
+2026-11-07T18:48:14.024Z  worker  POST /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3/apply: HTTP 200
+2026-11-07T18:48:19.252Z  flatfee status=open em.step=assigning em.status=published em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3
+2026-11-07T18:48:45.222Z  flatfee status=open em.step=assigning em.status=assigning em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3
+2026-11-07T18:49:16.245Z  flatfee status=claimed em.step=assigned em.status=accepted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
+2026-11-07T18:49:19.002Z  worker  POST /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3/submit (text_response): HTTP 200
+2026-11-07T18:49:44.873Z  flatfee status=claimed em.step=assigned em.status=submitted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
+2026-11-07T18:49:50.049Z  flatfee status=claimed em.step=approving em.status=submitted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
+2026-11-07T18:50:15.893Z  flatfee status=done em.step=completed em.status=completed em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9 paymentTx=0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346 rewardTx=0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6
+2026-11-07T18:50:16.715Z  worker  GET /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3: status=completed escrow_status=released escrow_tx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9 payment_tx=0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346
+2026-11-07T18:50:16.715Z  chain   escrow locked (the merchant's bounty)  https://robinhoodchain.blockscout.com/tx/0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
+2026-11-07T18:50:16.715Z  chain   escrow released to the worker  https://robinhoodchain.blockscout.com/tx/0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346
+2026-11-07T18:50:16.715Z  chain   $WIF reward to the worker  https://robinhoodchain.blockscout.com/tx/0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6
+2026-11-07T18:50:16.715Z  chain   $WIF cashback to the buyer  https://robinhoodchain.blockscout.com/tx/0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a
+2026-11-07T18:50:17.130Z  chain   after: buyer -0.25 USDG, 10 $WIF; worker +0.174 USDG, +50 $WIF; pay-to 0.05 USDG (the merchant)
+2026-11-07T18:50:17.130Z  chain   EM fee 13%: the worker should get about 0.174 USDG of the 0.20 bounty
+
+{
+  "ok": true,
+  "problems": [],
+  "taskId": "3e6e377d",
+  "emTaskId": "3175424d-4f83-45cc-b871-92d9dcd3ffe3",
+  "txs": {
+    "settle": "0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54",
+    "cashback": "0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a",
+    "escrow": "0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9",
+    "payment": "0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346",
+    "reward": "0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6"
+  },
+  "seen": [
+    {
+      "at": "2026-11-07T18:47:33.809Z",
+      "source": "chain",
+      "what": "before: buyer 0.588716 USDG, 1026.439385668474374796 $WIF; worker 0 USDG, 0 $WIF; pay-to 1.06985 USDG"
+    },
+    {
+      "at": "2026-11-07T18:47:51.438Z",
+      "source": "flatfee",
+      "what": "POST /api/hire: HTTP 201",
+      "tx": "0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54"
+    },
+    {
+      "at": "2026-11-07T18:47:51.611Z",
+      "source": "flatfee",
+      "what": "status=open em.step=publishing em.status=-"
+    },
+    {
+      "at": "2026-11-07T18:47:56.784Z",
+      "source": "flatfee",
+      "what": "status=open em.step=published em.status=published em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3"
+    },
+    {
+      "at": "2026-11-07T18:48:14.024Z",
+      "source": "worker",
+      "what": "POST /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3/apply: HTTP 200"
+    },
+    {
+      "at": "2026-11-07T18:48:19.252Z",
+      "source": "flatfee",
+      "what": "status=open em.step=assigning em.status=published em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3"
+    },
+    {
+      "at": "2026-11-07T18:48:45.222Z",
+      "source": "flatfee",
+      "what": "status=open em.step=assigning em.status=assigning em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3"
+    },
+    {
+      "at": "2026-11-07T18:49:16.245Z",
+      "source": "flatfee",
+      "what": "status=claimed em.step=assigned em.status=accepted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9"
+    },
+    {
+      "at": "2026-11-07T18:49:19.002Z",
+      "source": "worker",
+      "what": "POST /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3/submit (text_response): HTTP 200"
+    },
+    {
+      "at": "2026-11-07T18:49:44.873Z",
+      "source": "flatfee",
+      "what": "status=claimed em.step=assigned em.status=submitted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9"
+    },
+    {
+      "at": "2026-11-07T18:49:50.049Z",
+      "source": "flatfee",
+      "what": "status=claimed em.step=approving em.status=submitted em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9"
+    },
+    {
+      "at": "2026-11-07T18:50:15.893Z",
+      "source": "flatfee",
+      "what": "status=done em.step=completed em.status=completed em.task=3175424d-4f83-45cc-b871-92d9dcd3ffe3 worker=0xa329b5FB85cf76E1d235711AFc096B76374271c7 escrowTx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9 paymentTx=0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346 rewardTx=0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6"
+    },
+    {
+      "at": "2026-11-07T18:50:16.715Z",
+      "source": "worker",
+      "what": "GET /api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3: status=completed escrow_status=released escrow_tx=0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9 payment_tx=0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346"
+    },
+    {
+      "at": "2026-11-07T18:50:16.715Z",
+      "source": "chain",
+      "what": "escrow locked (the merchant's bounty)",
+      "tx": "0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9"
+    },
+    {
+      "at": "2026-11-07T18:50:16.715Z",
+      "source": "chain",
+      "what": "escrow released to the worker",
+      "tx": "0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346"
+    },
+    {
+      "at": "2026-11-07T18:50:16.715Z",
+      "source": "chain",
+      "what": "$WIF reward to the worker",
+      "tx": "0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6"
+    },
+    {
+      "at": "2026-11-07T18:50:16.715Z",
+      "source": "chain",
+      "what": "$WIF cashback to the buyer",
+      "tx": "0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a"
+    },
+    {
+      "at": "2026-11-07T18:50:17.130Z",
+      "source": "chain",
+      "what": "after: buyer -0.25 USDG, 10 $WIF; worker +0.174 USDG, +50 $WIF; pay-to 0.05 USDG (the merchant)"
+    },
+    {
+      "at": "2026-11-07T18:50:17.130Z",
+      "source": "chain",
+      "what": "EM fee 13%: the worker should get about 0.174 USDG of the 0.20 bounty"
+    }
+  ],
+  "deltas": {
+    "payerUsdg": "-250000",
+    "payToUsdg": "50000",
+    "merchantUsdg": "50000",
+    "workerUsdg": "174000",
+    "workerWif": "50000000000000000000",
+    "payerWif": "10000000000000000000"
+  }
+}
+PASS  hire 3e6e377d (EM 3175424d-4f83-45cc-b871-92d9dcd3ffe3): 0.25 USDG paid, the escrow paid the worker, $WIF sent
+rc=0

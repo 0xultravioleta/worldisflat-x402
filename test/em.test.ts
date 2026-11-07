@@ -18,7 +18,7 @@ import type { Chain, Tier } from "../src/chain.js";
 import { CHAINS, ConfigError, loadConfig, type Config, type EmConfig } from "../src/config.js";
 import { EmHttpError, emClient, type Fetch } from "../src/em.js";
 import { emPublishRefusal } from "../src/emguard.js";
-import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, manifestProblem, publishRefusal } from "../src/emhire.js";
+import { MAX_ANSWER_BYTES, MAX_APPROVALS, answerOf, createEmHire, hireExpiry, manifestProblem, publicPause, publishRefusal } from "../src/emhire.js";
 import { EscrowRefused, checkPaymentAuth, escrowNetwork, escrowPaymentAuth, escrowReadiness, releaseOrder, typedDataSigner, type BuildPreAuth } from "../src/escrow.js";
 import { Store } from "../src/store.js";
 import { budgetedWif } from "../src/wif.js";
@@ -569,8 +569,9 @@ interface Setup {
   logs: string[];
 }
 
-// the merchant's USDG on the chain double
+// the merchant's USDG on the chain double, and whether reading it fails
 let merchantUsdg = 10n ** 9n;
+let usdgFails = false;
 
 /** the app with Execution Market switched on, after the first check of EM (as `start()` does at boot) */
 async function setup(
@@ -596,7 +597,10 @@ async function setup(
     releaseOrder: (pi) => releaseOrder({ cfg, wallet: merchant }, pi),
     // the SDK has no Robinhood testnet row; the tests that are not about that stand in for its builder
     ready: (pc) => escrowReadiness(cfg, pc, opts.readyBuild ?? opts.build ?? testBuild),
-    usdgBalance: async () => merchantUsdg,
+    usdgBalance: async () => {
+      if (usdgFails) throw new Error("the RPC is down");
+      return merchantUsdg;
+    },
     log: (m) => logs.push(m),
     now,
   });
@@ -804,7 +808,7 @@ test("knob on: a paid hire is published on Execution Market, assigned with a USD
   assert.ok(s.em.st.calls.length > 5);
   assert.ok(s.em.st.calls.every((c) => c.wallet === merchant.address));
   const info = (await (await call(s.app, "/api/info")).json()) as Any;
-  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.2", deadlineHours: 24 });
+  assert.deepEqual(info.hire, { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null, expiry: hireExpiry(24) });
   assert.ok(!JSON.stringify(info).includes(merchant.privateKey.slice(2)));
 });
 
@@ -981,7 +985,8 @@ test("Execution Market refuses the task at publish: it ends expired with the rea
   // the next buyer is not charged for a task EM would refuse too
   const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "x" }) });
   assert.equal(next.status, 503);
-  assert.match(((await next.json()) as Any).error, /refused the task/);
+  assert.equal(((await next.json()) as Any).error, "hiring is paused: Execution Market refused this server's last task; hiring waits for the operator.");
+  assert.match(s.hire.unavailable()!.detail, /refused the task: .*422 invalid_payment_token/);
 });
 
 // EM's publish refusals as its routes write them (a675eb6: services/publish_errors.py, content_review.py,
@@ -1043,7 +1048,8 @@ test("a publish EM refuses for the task's own text ends that task only; a retrya
       assert.equal(next.status, 201, what);
       assert.equal(next.body.task.em.step, "published", what);
     } else {
-      assert.match(s.hire.unavailable()!, /refused the task/, what);
+      assert.match(s.hire.unavailable()!.detail, /refused the task/, what);
+      assert.equal(s.hire.unavailable()!.kind, "refused", what);
       const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Photo of today's menu" }) });
       assert.equal(next.status, 503, what);
     }
@@ -1491,10 +1497,11 @@ test("a refused publish keeps hiring paused across a restart, until the Executio
   const s = await setup();
   s.em.knobs.refuseCreate = true;
   await buy(s.app, buyer, "Find a plumber");
-  assert.match(s.hire.unavailable()!, /refused the task/);
+  assert.match(s.hire.unavailable()!.detail, /refused the task/);
   // the same settings after a restart: still paused
   const again = await setup({}, { dir: s.dir });
-  assert.match(again.hire.unavailable()!, /refused the task/);
+  assert.match(again.hire.unavailable()!.detail, /refused the task/);
+  assert.equal(again.hire.unavailable()!.kind, "refused");
   // the operator changed something on this side: hiring resumes
   const changed = await setup({ EM_BOUNTY_USDG: "0.15" }, { dir: s.dir });
   assert.equal(changed.hire.unavailable(), null);
@@ -1574,7 +1581,12 @@ test("a hire that could not run on Execution Market is refused before the 402, s
     const r = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "a small task" }) });
     assert.equal(r.status, 503);
     const body = (await r.json()) as Any;
-    assert.match(body.error, why);
+    const p = s.hire.unavailable()!;
+    assert.match(p.detail, why);
+    // what anyone sees without paying: the kind and its fixed sentence, never the detail (EM's words, a wallet, an amount)
+    const reason = publicPause(p.kind, s.cfg.chain.label);
+    assert.deepEqual(body, { error: `hiring is paused: ${reason}`, paused: { kind: p.kind, reason }, retryable: true });
+    assert.doesNotMatch(JSON.stringify(body), /0x[0-9a-f]{6,}|\d+(\.\d+)?\s*USDG|answered \d{3}/i);
     assert.equal(r.headers.get("payment-required"), null);
     assert.equal(s.em.st.creates.length, 0);
     // asking the agent is not affected
@@ -1589,6 +1601,12 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   t.em.knobs.network = { ...t.em.knobs.network, tokens: { USDC: { address: USDG } } };
   await t.hire.tick();
   await refusedBefore402(t, /does not take USDG/);
+  // the merchant's USDG could not be read (the RPC down since boot): unknown, not short
+  usdgFails = true;
+  const unread = await setup();
+  usdgFails = false;
+  assert.equal(unread.hire.unavailable()!.kind, "unchecked");
+  await refusedBefore402(unread, /USDG has not been read yet/);
   // the merchant cannot fund one bounty
   merchantUsdg = 199_999n;
   await refusedBefore402(await setup(), /cannot fund one more escrow/);
@@ -1597,7 +1615,8 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   const ok = await setup();
   assert.equal(ok.hire.unavailable(), null);
   assert.equal((await buy(ok.app, buyer, "first")).status, 201);
-  assert.match(ok.hire.unavailable()!, /0.4 USDG needed/);
+  assert.match(ok.hire.unavailable()!.detail, /0.4 USDG needed/);
+  assert.equal(ok.hire.unavailable()!.kind, "funds");
   const second = await call(ok.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "second" }) });
   assert.equal(second.status, 503);
   // an unreachable EM later keeps the last answer: a hire paid now is published once EM answers again
@@ -1610,7 +1629,85 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   const banned = await setup();
   banned.em.knobs.configForbidden = true;
   await banned.hire.refresh();
-  assert.match(banned.hire.unavailable()!, /refused to show its escrow parameters/);
+  assert.match(banned.hire.unavailable()!.detail, /refused to show its escrow parameters/);
+  assert.equal(banned.hire.unavailable()!.kind, "escrow");
+});
+
+test("/api/info says whether a hire would be taken now and, when not, why, in a fixed sentence with no wallet, amount or EM text", async () => {
+  const info = async (s: Setup) => ((await (await call(s.app, "/api/info")).json()) as Any).hire;
+  const hire503 = async (s: Setup) => {
+    const r = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "a small task" }) });
+    return { status: r.status, error: ((await r.json()) as Any).error as string };
+  };
+  // what the public answer must never carry: the merchant wallet, an amount EM or the funding check computed, EM's words
+  const clean = (hire: Any, what: string) => {
+    const text = JSON.stringify(hire.paused);
+    assert.doesNotMatch(text, /0x[0-9a-f]{6,}/i, what);
+    assert.doesNotMatch(text, /\d+(\.\d+)?\s*USDG|answered \d{3}|invalid_payment_token|USDG is not enabled|forbidden/i, what);
+    assert.deepEqual(Object.keys(hire.paused).sort(), ["kind", "reason"], what);
+  };
+  const testnet = "Robinhood Chain Testnet";
+
+  // the boot check has not answered: nothing is known about EM's escrow yet
+  const unchecked = await setup({}, { check: false });
+  assert.deepEqual(await info(unchecked), {
+    via: "execution-market", bounty: "0.2", deadlineHours: 24, available: false,
+    paused: { kind: "unchecked", reason: "Flat Fee has not finished checking that a hire can run yet." },
+    expiry: hireExpiry(24),
+  });
+  assert.equal((await hire503(unchecked)).status, 503);
+
+  // EM can take it, and the merchant funds it: available, nothing paused
+  merchantUsdg = 200_000n;
+  const ok = await setup();
+  assert.deepEqual(await info(ok), { via: "execution-market", bounty: "0.2", deadlineHours: 24, available: true, paused: null, expiry: hireExpiry(24) });
+  // one hire takes the one bounty the merchant holds: the next is refused before its 402, and /api/info says so
+  assert.equal((await buy(ok.app, buyer, "first")).status, 201);
+  const funds = await info(ok);
+  assert.equal(funds.available, false);
+  assert.deepEqual(funds.paused, { kind: "funds", reason: "The wallet that pays the escrow cannot fund one more task right now." });
+  clean(funds, "funds");
+  // the 503 says the same sentence; the detail, amount included, stays on the server
+  const r = await hire503(ok);
+  assert.equal(r.status, 503);
+  assert.equal(r.error, `hiring is paused: ${funds.paused.reason}`);
+  assert.match(ok.hire.unavailable()!.detail, /0\.4 USDG needed/);
+
+  // EM's escrow on this network is not the one Flat Fee is configured with
+  merchantUsdg = 10n ** 9n;
+  const escrow = await setup({}, { check: false });
+  escrow.em.knobs.network = { ...escrow.em.knobs.network, operator: Wallet.createRandom().address };
+  await escrow.hire.tick();
+  const e = await info(escrow);
+  assert.equal(e.available, false);
+  assert.deepEqual(e.paused, { kind: "escrow", reason: `Execution Market's escrow on ${testnet} cannot take a hire right now.` });
+  clean(e, "escrow");
+  assert.equal((await hire503(escrow)).error, `hiring is paused: ${e.paused.reason}`);
+  assert.match(escrow.hire.unavailable()!.detail, /operator on robinhood-testnet is not the one/);
+  // EM refusing to show its parameters at all is the same kind
+  const banned = await setup();
+  banned.em.knobs.configForbidden = true;
+  await banned.hire.refresh();
+  assert.deepEqual((await info(banned)).paused, { kind: "escrow", reason: `Execution Market's escrow on ${testnet} cannot take a hire right now.` });
+  clean(await info(banned), "banned");
+
+  // EM refused the last publish for this server's settings: paused, and EM's own words stay out of /api/info
+  const refused = await setup();
+  refused.em.knobs.refuseCreate = true;
+  await buy(refused.app, buyer, "Find a plumber");
+  const p = await info(refused);
+  assert.equal(p.available, false);
+  assert.deepEqual(p.paused, { kind: "refused", reason: "Execution Market refused this server's last task; hiring waits for the operator." });
+  clean(p, "refused");
+  assert.equal((await hire503(refused)).error, `hiring is paused: ${p.paused.reason}`);
+  assert.match(refused.hire.unavailable()!.detail, /invalid_payment_token/);
+
+  // every kind has its sentence, and none of them names a wallet, an amount or a contract
+  for (const kind of ["unchecked", "escrow", "refused", "funds"] as const) {
+    const s = publicPause(kind, testnet);
+    assert.ok(s.length > 10, kind);
+    assert.doesNotMatch(s, /0x|\d/, kind);
+  }
 });
 
 // ---------------------------------------------------------------------------------------------------------------

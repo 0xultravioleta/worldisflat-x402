@@ -109,6 +109,17 @@ parameters (a 4xx) pauses hiring. These checks see what Flat Fee can see before 
 refused for a reason they cannot read, and that buyer is then not refunded; a refusal of the settings or the identity
 also stops the next buyers from paying.
 
+`GET /api/info` says the same before anyone pays, so the landing page never says "Live" while hires are refused:
+`hire.available` is the check above, and `hire.paused` is `{kind, reason}` while it fails, where `kind` is `unchecked`
+(EM not reached since boot), `escrow` (EM's escrow on the network is not Flat Fee's, cannot be built, or EM refused to
+show it), `refused` (EM refused the last publish for the settings or identity) or `funds` (the merchant cannot fund one
+more escrow), and `reason` is one fixed sentence per kind (`publicPause` in `src/emhire.ts`) with no wallet, amount,
+contract or EM text in it; the 503 before the 402 says the same, and the detail stays in the server's log. `hire.expiry` (also in the 201 of `/api/hire`) tells the buyer
+what becomes of a hire nobody finishes (`hireExpiry`): the task is on Execution Market for any of its people to take; if
+nobody takes it by the deadline it expires there, with nothing locked; if the person who took it does not deliver by
+then, EM's expiry job returns the escrowed pay to the merchant; the fee is not refunded either way. While hiring is
+paused, the page's hire button is off.
+
 How a publish EM did not take is handled (`publishRefusal` in `src/emhire.ts`):
 
 | EM's answer | What Flat Fee does |
@@ -192,7 +203,7 @@ and the escrow builder ship in `uvd-x402-sdk`, already a dependency here.
 | `EM_POLL_SECONDS` | `30` | how often the loop advances open tasks |
 | `EM_PAYMENT_TOKEN` | `USDG` | the token EM records for the task |
 | `EM_ESCROW_ADDRESS`, `EM_OPERATOR_ADDRESS`, `EM_TOKEN_COLLECTOR_ADDRESS` | (required when on) | the escrow contracts on `NETWORK`, as deployed for Execution Market |
-| `EM_REPUTATION_NETWORK` | (none) | optional, passed to EM as `reputation_network`. Leave it empty until EM writes ERC-8004 reputation on Robinhood Chain (not yet: EM refuses `robinhood` there today), then set it to `robinhood` so ratings land on the chain that paid |
+| `EM_REPUTATION_NETWORK` | (none) | optional, passed to EM as `reputation_network`; empty lets EM decide. EM takes only a network its SDK can relay ratings on (`REPUTATION_CAPABLE_NETWORKS`, `integrations/erc8004/reputation_target.py` at `647b419e`, with `uvd-x402-sdk` 0.108.0's `RELAYED_FEEDBACK_NETWORKS`): `robinhood` is not one today, though EM registers identities there. A network EM refuses ends that task with `422 invalid_reputation_network` (the buyer already paid) and pauses hiring, so the deploy leaves it empty until EM takes `robinhood` |
 
 `EM_HIRE=on` also needs `MERCHANT_PRIVATE_KEY`: the merchant wallet is Flat Fee's identity on Execution Market and the
 payer of every escrow, so it must hold USDG for the bounties as well as $WIF and a little ETH for gas. `WORKER_TOKEN`
@@ -201,10 +212,13 @@ is not needed for hiring in this mode.
 **The merchant wallet needs an ERC-8004 identity on Base before `EM_HIRE` goes on.** Execution Market requires one of
 every publisher in production (`EM_REQUIRE_ERC8004=true`; `mcp_server/api/routers/tasks.py` at `a675eb6` answers
 `403 identity_required` without it). The checks before the 402 cannot see it: without the identity, the first buyer
-pays for a task EM refuses, and hiring then pauses. Register it once, gaslessly, with
-`POST /api/v1/reputation/register` signed by the merchant wallet (EM's `skill.md`), and wait until that registration
-completes (a publish meanwhile answers `409 identity_registering`, which Flat Fee retries). Never register twice: a
-second registration can mint a duplicate identity.
+pays for a task EM refuses, and hiring then pauses. Register it once, gaslessly, with `npm run em:register`
+(`scripts/em-register.ts`: `POST /api/v1/reputation/register` signed by the merchant wallet, EM's `skill.md`). It reads
+EM's public status first (`GET /api/v1/reputation/register/wallet/{wallet}?network=base`), does nothing for a wallet
+that already has an identity, follows a registration in flight instead of sending another, is a dry run unless
+`CONFIRM_EM_REGISTER` is the merchant's own address, and waits until EM says `completed` (a publish meanwhile answers
+`409 identity_registering`, which Flat Fee retries). Never register twice: a second registration can mint a duplicate
+identity.
 
 **`DATA_DIR` must persist while hires are open.** A task in flight, and the escrow authorization signed for it, live
 there. The Lightsail recipe in `deploy/aws` has no volume: every restart or redeploy starts with an empty `DATA_DIR`,
@@ -214,6 +228,58 @@ answer and the worker no $WIF. With that recipe, turn `EM_HIRE` on only for a de
 are open, or give it persistent storage first. Run one process per `DATA_DIR`, with no overlapping deploys: two
 processes over one `state.json` each keep their own copy and could each pay a reward. Turning `EM_HIRE` off with hires
 still open leaves them unattended too: nobody approves them and no $WIF goes out.
+
+### Turning it on in the deploy
+
+The container's whole environment with hiring through Execution Market on is `deploy/aws/em-hire.env` (no secrets:
+`MERCHANT_PRIVATE_KEY` and `WORKER_TOKEN` are the container's own: through Terraform they stay in `terraform.tfvars`,
+but a Lightsail deployment made any other way takes its environment whole, so both go with it again, or `EM_HIRE=on`
+refuses to start without the merchant key). `test/deploy.test.ts` loads that file the
+way the server does, checks every `EM_*` value against EM's recorded payment-config for Robinhood Chain (and that the
+SDK builds that escrow), and that each key reaches the container through `deploy/aws/main.tf` (`em_*` variables in
+`terraform.tfvars`) and is in `.env.example`.
+
+1. Once, before anything else: `npm run em:register` with the merchant's key, then again with
+   `CONFIRM_EM_REGISTER=<the merchant's address>`, until it says `completed` (above).
+2. One redeploy with the environment of `em-hire.env` (it also moves `PUBLIC_URL` to the public domain, below). The new
+   container starts with an empty `DATA_DIR`, and so does every restart after it: hires open at that moment are
+   orphaned (above), and a pause kept after EM refused a publish is forgotten, so check `/api/info` after any restart.
+3. `GET /api/info` answers `hire.via: "execution-market"` and, once the first check passed, `hire.available: true`.
+4. `npm run e2e:hire` (below) buys one hire and follows it to the worker's payout.
+
+**Off, at once:** `EM_HIRE=off` and nothing else (every other `EM_*` is then not read), in one redeploy; `/api/hire`
+goes back to the task board, which needs the `WORKER_TOKEN` the container has. Hires open at that moment are left
+unattended (above).
+
+**`PUBLIC_URL`** is read in one place: the `resource` of every 402 (`src/app.ts`, both routes and both tiers). Nothing a
+payment is matched on depends on it: `uvd-x402-sdk` matches a payment to the 402 by network, recipient and amount
+(`resolvePaymentRequirement`), and an `X-UVD-Purchase` receipt is bound to the URL actually requested. So with
+`PUBLIC_URL=https://flatfee.ultravioletadao.xyz`, a buyer on the domain gets a 402 that names the host they opened, and
+one who comes in on the Lightsail URL gets the same 402, naming the domain (`test/deploy.test.ts` compares the two),
+and a payment signed for it is matched the same way, since nothing it is matched on names a host. The page reads its own origin, and `/api/info` and Execution Market never see `PUBLIC_URL`.
+
+### The end-to-end run (`npm run e2e:hire`)
+
+One real hire on Robinhood Chain mainnet against the running deploy (`FLATFEE_URL`), from a machine whose `.env` holds
+the keys (`scripts/e2e-hire.ts`, rules and run in `scripts/lib/hire.ts`). Before it reads the chain or signs anything,
+it refuses unless the network is mainnet, `RPC_URL` is set and is not a public Robinhood Chain RPC, every amount it can
+move is approved and matches the server's `/api/info` and quote (`CONFIRM_MAINNET_SPEND` the buyer's price,
+`CONFIRM_MAINNET_BOUNTY` the escrow, `CONFIRM_MAINNET_REWARD` the worker's $WIF, `CONFIRM_MAINNET_WIF` the cashback),
+the server hires through Execution Market and says `hire.available: true`, and the worker is neither the buyer, nor
+`PAY_TO`, nor the merchant. Then the buyer pays over x402, the run follows the task on Flat Fee (every change of its
+status, Execution Market's status as Flat Fee read it, the escrow, release and reward transactions), the worker applies
+and, once its escrow locked, delivers a text answer; at the end it reads Execution Market's own last status as the
+worker, and checks on chain that the buyer paid exactly the price and got the cashback, and that the worker got the
+bounty less EM's fee and exactly the reward. It never prints a key, a session or the RPC URL.
+
+The worker (`WORKER_MODE`): `erc8128` signs with its own wallet (`WORKER_PRIVATE_KEY`) and needs
+`WORKER_EM_CLIENT=paybox-plugin`, the one client value the owner approved for the test worker; the run refuses any
+other before paying, since Flat Fee assigns only people. A new worker wallet gets its ERC-8004 identity from EM
+while it applies (gasless); an apply that times out or answers `403 identity_registration_failed` while that mint
+runs is tried again on later passes (each worker call waits up to 60 s). `token` uses a person's dashboard session
+(`WORKER_EM_TOKEN`), and
+`manual` waits for a person on execution.market (`WORKER_WALLET`) to apply and deliver the text the run prints. If
+someone else applies with a better reputation and Flat Fee picks them, the run says so and delivers nothing.
 
 ## Tests
 
@@ -226,3 +292,13 @@ off), EM's own release and expiry, and the timeouts. The double plays Robinhood 
 row, so those tests stand in for its builder with one that signs the same wrapper; Flat Fee's checks before and after
 the builder are the real ones, and on the testnet the SDK's real builder is shown to refuse. `test/emtoken.test.ts` runs
 the SDK's real builder through Flat Fee's signer on EM's recorded Base and Robinhood Chain entries, offline.
+
+`test/hire.test.ts` runs `npm run e2e:hire`'s rules and run against a Flat Fee with `EM_HIRE` on, on Robinhood Chain
+mainnet with the SDK's real escrow builder and EM's recorded payment-config, a double of Execution Market that plays
+both the publisher's and the worker's routes (every ERC-8128 signature checked, the parties told apart as EM does) and
+a fake chain that moves every balance: the whole hire to the worker's payout, a worker listed as an agent (never
+assigned), a stranger picked first, a missing $WIF leg, a paused server (never paid), `reputation_network` refused, a
+task nobody takes by its deadline (cancelled, nothing locked) and one taken but not delivered (EM's escrow back to the
+merchant). `test/register.test.ts` runs `npm run em:register` against a double of EM's registration routes (an
+identity already there, one in flight, a dry run, one registration, a failure, a timeout). `test/deploy.test.ts` checks
+`deploy/aws/em-hire.env` and what `PUBLIC_URL` does.

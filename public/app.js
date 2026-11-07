@@ -1,5 +1,5 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
-import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=2";
+import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=3";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -34,7 +34,8 @@ async function loadInfo() {
   fact("Paid to", link(info.payToUrl, short(info.payTo)));
   fact("Facilitator", info.facilitator.replace(/^https?:\/\//, ""));
 
-  // escrow is said to run only when this server hires through Execution Market (page-state.js)
+  // escrow is said to run only when this server hires through Execution Market and says a hire would be taken now;
+  // while it is paused, the page says so with the server's own reason (page-state.js)
   const copy = escrowCopy(info);
   document.body.dataset.escrow = copy.escrow;
   $("#escrow-pill").textContent = copy.pill;
@@ -42,6 +43,8 @@ async function loadInfo() {
   $("#hire-status-text").textContent = copy.statusText;
   $("#escrow-bounty").hidden = !copy.bounty;
   if (copy.bounty) $("#escrow-bounty-amount").textContent = copy.bounty;
+  $("#escrow-expiry").hidden = !copy.expiry;
+  if (copy.expiry) $("#escrow-expiry").textContent = copy.expiry;
   $("#escrow-foot").textContent = copy.foot;
   $("#board-meta").textContent = copy.boardMeta;
   $("#board-how").textContent = copy.boardHow;
@@ -50,6 +53,11 @@ async function loadInfo() {
   for (const b of [$("#ask-pay"), $("#hire-pay")]) {
     b.disabled = !!blocked;
     if (blocked) b.title = blocked;
+  }
+  // hiring paused: nobody is asked to connect a wallet for a hire the server would refuse before its 402
+  if (!blocked && copy.escrow === "paused") {
+    $("#hire-pay").disabled = true;
+    $("#hire-pay").title = copy.statusText;
   }
   if (blocked) {
     // a local fork (npm run demo): the demo already paid; what is left to try is the task board

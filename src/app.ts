@@ -7,7 +7,7 @@ import { createHonoMiddleware, parsePaymentHeader } from "uvd-x402-sdk/backend";
 import { answer } from "./agent.js";
 import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
-import { newEmState, publicEm, type EmHire } from "./emhire.js";
+import { hireExpiry, newEmState, publicEm, publicPause, type EmHire } from "./emhire.js";
 import type { Store, Task } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
@@ -213,7 +213,12 @@ export function createApp({
       if (unpublishable) return c.json({ error: unpublishable }, 400);
       // through Execution Market, a hire that could not be published or funded is refused before anyone pays for it
       const paused = route === "hire" ? (emHire?.unavailable() ?? null) : null;
-      if (paused) return c.json({ error: `hiring is paused: ${paused}`, retryable: true }, 503);
+      // the same fixed sentence /api/info shows: anyone can ask without paying, so EM's words, the merchant wallet and
+      // the amounts of the detail stay off the wire (EM's refusals and escrow problems are logged when they begin)
+      if (paused) {
+        const reason = publicPause(paused.kind, cfg.chain.label);
+        return c.json({ error: `hiring is paused: ${reason}`, paused: { kind: paused.kind, reason }, retryable: true }, 503);
+      }
 
       const header = paymentHeaderOf((n) => c.req.header(n));
       if (header.conflict) return c.json({ error: "send one payment header: PAYMENT-SIGNATURE and X-PAYMENT differ" }, 400);
@@ -326,12 +331,22 @@ export function createApp({
         cashback: formatUnits(cfg.wif.cashback, WIF_DECIMALS),
         workerReward: formatUnits(cfg.wif.workerReward, WIF_DECIMALS),
       },
-      // who does a hire: Flat Fee's own board, or a human on Execution Market paid from a USDG escrow
-      hire: cfg.em
-        ? { via: "execution-market", bounty: formatUnits(cfg.em.bounty, USDG_DECIMALS), deadlineHours: cfg.em.deadlineHours }
-        : { via: "board" },
+      // who does a hire: Flat Fee's own board, or a human on Execution Market paid from a USDG escrow. Through
+      // Execution Market, whether a hire would be taken right now (the same check as the 503 before the 402), and if
+      // not, why, in a fixed sentence per kind (publicPause): the 503's detail can carry EM's words, a wallet or an amount
+      hire: cfg.em ? { via: "execution-market", bounty: formatUnits(cfg.em.bounty, USDG_DECIMALS), deadlineHours: cfg.em.deadlineHours, ...hireAvailability() } : { via: "board" },
     }),
   );
+
+  function hireAvailability() {
+    const p = emHire!.unavailable();
+    return {
+      available: p === null,
+      paused: p ? { kind: p.kind, reason: publicPause(p.kind, cfg.chain.label) } : null,
+      // what becomes of a hire nobody finishes, before anyone pays for one
+      expiry: hireExpiry(cfg.em!.deadlineHours),
+    };
+  }
 
   app.get("/api/quote", async (c) => {
     const payer = c.req.query("payer");
@@ -379,7 +394,7 @@ export function createApp({
           const published = emHire.publish(task.id);
           const wait = new Promise<void>((r) => setTimeout(r, publishWaitMs).unref?.());
           const [, cb] = await Promise.all([Promise.race([published, wait]), cashback(ctx.entryId, ctx.payer)]);
-          return c.json({ task: view(store.task(task.id)!), via: "execution-market", poll: `/api/tasks/${task.id}`, receipt: receipt(ctx, cb) }, 201);
+          return c.json({ task: view(store.task(task.id)!), via: "execution-market", poll: `/api/tasks/${task.id}`, expiry: hireExpiry(cfg.em!.deadlineHours), receipt: receipt(ctx, cb) }, 201);
         }
         const task = store.createTask({ request, payer: ctx.payer, paidTx: ctx.settleTx });
         store.updateLedger(ctx.entryId, { taskId: task.id });

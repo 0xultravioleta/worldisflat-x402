@@ -72,9 +72,53 @@ export interface EmHireDeps {
   redact?: (e: unknown) => string;
 }
 
+/**
+ * Why new hires are refused before their 402, by kind: Execution Market not reached yet (`unchecked`), its escrow on
+ * this network cannot carry a hire (`escrow`), it refused this server's last publish for its settings or identity
+ * (`refused`), or the merchant wallet cannot fund one more escrow (`funds`).
+ */
+export type HirePauseKind = "unchecked" | "escrow" | "refused" | "funds";
+
+export interface HirePause {
+  kind: HirePauseKind;
+  /** the full reason, for the 503 and the log; it can carry EM's words, a wallet or an amount */
+  detail: string;
+}
+
+/**
+ * What /api/info (and so the landing page) says about a pause: one fixed sentence per kind, with no wallet, amount,
+ * contract or error text in it. The 503 before the 402 says the same; the detail stays in the server log.
+ */
+export function publicPause(kind: HirePauseKind, chainLabel: string): string {
+  switch (kind) {
+    case "unchecked":
+      return "Flat Fee has not finished checking that a hire can run yet.";
+    case "escrow":
+      return `Execution Market's escrow on ${chainLabel} cannot take a hire right now.`;
+    case "refused":
+      return "Execution Market refused this server's last task; hiring waits for the operator.";
+    case "funds":
+      return "The wallet that pays the escrow cannot fund one more task right now.";
+  }
+}
+
+/**
+ * What becomes of a hire nobody finishes, as /api/info and the 201 of /api/hire tell the buyer: what this code does
+ * (a task nobody was assigned by its deadline is cancelled by onPublished or expired by EM, before anything is locked;
+ * a task EM expires after an assignment ends expired, and EM's expiry job sends its locked escrow back to the publisher,
+ * mcp_server/jobs/task_expiration.py) and nothing more. No refund either way.
+ */
+export function hireExpiry(deadlineHours: number): string {
+  return (
+    `The task is on Execution Market, for any of its people to take. If no one takes it within ${deadlineHours} h, it expires ` +
+    "there, with nothing locked for it. If the person who takes it does not deliver by then, " +
+    "Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+  );
+}
+
 export interface EmHire {
   /** why a new hire is refused before its 402 (Execution Market cannot take it, or the merchant cannot fund it); null when it can run */
-  unavailable(): string | null;
+  unavailable(): HirePause | null;
   /** why Execution Market would refuse to publish this request (its own rules, on the exact task text), or null */
   refuses(request: string): string | null;
   /** checks EM's escrow for this network and the merchant's USDG again (each pass does) */
@@ -209,6 +253,8 @@ export function createEmHire({
   // Until a first check answers, nobody pays for a hire. An unreachable EM or RPC later keeps the last answer (a hire
   // paid then is published by the loop once EM answers again); a refusal from EM does not.
   let configProblem: string | null = "Execution Market has not been checked yet";
+  // false until a check answered: EM (or the RPC) unreachable since boot leaves nothing known about EM's escrow
+  let checked = false;
   let balance: bigint | null = null;
   // EM refused a publish outright: hiring stays paused, across restarts (state.json), until a publish goes through
   // again or the EM settings change (the operator fixed something on this side)
@@ -241,17 +287,20 @@ export function createEmHire({
     }
     if (why !== configProblem) log(why ? `hiring paused: ${why}` : "Execution Market can take hires on this network");
     configProblem = why;
+    checked = true;
   };
 
-  const unavailable = (): string | null => {
-    if (configProblem) return configProblem;
+  const unavailable = (): HirePause | null => {
+    if (configProblem) return { kind: checked ? "escrow" : "unchecked", detail: configProblem };
     const refused = publishRefused();
-    if (refused) return refused;
+    if (refused) return { kind: "refused", detail: refused };
     // every hire whose escrow has not landed yet still needs a bounty from the merchant, and so does the next one
+    // never read (the RPC unreachable since boot): unknown, not short
+    if (balance === null) return { kind: "unchecked", detail: "the merchant wallet's USDG has not been read yet" };
     const unfunded = store.tasks().filter((t) => t.via === "em" && t.em && UNFUNDED.has(t.em.step)).length;
     const needed = em.bounty * BigInt(unfunded + 1);
-    if (balance === null || balance < needed) {
-      return `the merchant wallet cannot fund one more escrow (${formatUnits(needed, USDG_DECIMALS)} USDG needed for the open hires)`;
+    if (balance < needed) {
+      return { kind: "funds", detail: `the merchant wallet cannot fund one more escrow (${formatUnits(needed, USDG_DECIMALS)} USDG needed for the open hires)` };
     }
     return null;
   };

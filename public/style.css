@@ -1,6 +1,6 @@
 /* Flat Fee landing page: one primary action (the hire form) beside how hiring with escrow works; everything else in
-   quiet rows below. body[data-escrow] ("off" | "on", set by app.js) colours the escrow status: amber and dashed while
-   it is off, mint once it runs. Palette from the logo (near-black + lime -> mint). System fonts only. */
+   quiet rows below. body[data-escrow] ("off" | "paused" | "on", set by app.js) colours the escrow status: amber and
+   dashed while it is off or paused, mint while it runs. Palette from the logo (near-black + lime -> mint). System fonts only. */
 :root {
   --bg: #0f1412;          /* logo background */
   --surface: #161d1a;     /* cards */
@@ -99,13 +99,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .steps p { margin: 5px 0 0; text-wrap: pretty; }
 .steps strong { color: var(--text); font-weight: 650; }
 .steps .k { color: var(--mint); font-weight: 650; }
+.strip-note { margin: 0 0 10px 44px; color: var(--muted); font-size: var(--fs-micro); text-wrap: pretty; }
 .strip-foot { margin: auto 0 0 44px; padding-top: 4px; color: var(--muted); font-size: var(--fs-micro); }
 
-/* escrow OFF: the steps describe how it works, so nothing in them reads as running: neutral circles, step 3 dashed amber */
-body[data-escrow="off"] .strip h2 svg { color: var(--amber); }
-body[data-escrow="off"] .steps li::before { border-color: var(--muted); color: var(--muted); }
-body[data-escrow="off"] .steps li.lock::before { background: var(--bg); color: var(--amber); border: 1.5px dashed var(--amber); }
-body[data-escrow="off"] .steps .k { color: var(--text); }
+/* escrow OFF or PAUSED: the steps describe how it works, so nothing in them reads as running: neutral circles, step 3 dashed amber */
+body[data-escrow="off"] .strip h2 svg, body[data-escrow="paused"] .strip h2 svg { color: var(--amber); }
+body[data-escrow="off"] .steps li::before, body[data-escrow="paused"] .steps li::before { border-color: var(--muted); color: var(--muted); }
+body[data-escrow="off"] .steps li.lock::before, body[data-escrow="paused"] .steps li.lock::before { background: var(--bg); color: var(--amber); border: 1.5px dashed var(--amber); }
+body[data-escrow="off"] .steps .k, body[data-escrow="paused"] .steps .k { color: var(--text); }
 
 /* escrow ON: the same elements, solid and mint */
 body[data-escrow="on"] .status { background: rgba(110, 224, 180, .08); border-color: rgba(110, 224, 180, .4); }

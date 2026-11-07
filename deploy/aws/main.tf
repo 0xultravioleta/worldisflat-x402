@@ -113,6 +113,21 @@ variable "em_reputation_network" {
   default = ""
 }
 
+variable "em_payment_token" {
+  type    = string
+  default = ""
+}
+
+variable "em_deadline_hours" {
+  type    = string
+  default = ""
+}
+
+variable "em_poll_seconds" {
+  type    = string
+  default = ""
+}
+
 resource "aws_lightsail_container_service" "flatfee" {
   name        = var.service_name
   power       = "nano"
@@ -154,6 +169,9 @@ resource "aws_lightsail_container_service_deployment_version" "flatfee" {
       EM_OPERATOR_ADDRESS        = var.em_operator_address
       EM_TOKEN_COLLECTOR_ADDRESS = var.em_token_collector_address
       EM_REPUTATION_NETWORK      = var.em_reputation_network
+      EM_PAYMENT_TOKEN           = var.em_payment_token
+      EM_DEADLINE_HOURS          = var.em_deadline_hours
+      EM_POLL_SECONDS            = var.em_poll_seconds
     }
     ports = {
       "3000" = "HTTP"

@@ -15,7 +15,7 @@ import { registerPlanRefusal, runRegister } from "./lib/register.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const wallet = new Wallet(keyOrExit("MERCHANT_PRIVATE_KEY"));
-const apiUrl = origin(process.env.EM_API_URL ?? "https://api.execution.market");
+const apiUrl = origin(process.env.EM_API_URL?.trim() || "https://api.execution.market");
 if (!apiUrl) {
   console.error("EM_API_URL must be Execution Market's API origin, https");
   process.exit(1);

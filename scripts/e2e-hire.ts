@@ -111,6 +111,8 @@ try {
     },
     payer,
     payTo: cfg.payTo,
+    // the wallet that locks the escrow: MERCHANT_PRIVATE_KEY's, else PAY_TO (the deploy's one-wallet setup)
+    merchant: cfg.merchantKey ? new Wallet(cfg.merchantKey).address : cfg.payTo,
     explorerTx: (h) => txUrl(cfg.chain, h),
     fees,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -119,6 +121,8 @@ try {
   });
   console.log("\n" + JSON.stringify({ ...outcome, deltas: outcome.deltas && Object.fromEntries(Object.entries(outcome.deltas).map(([k, v]) => [k, v.toString()])) }, null, 2));
   for (const p of outcome.problems) console.error(`FAIL  ${p}`);
+  // a FAIL after the payment is not a reason to pay again: the transactions above say what landed
+  if (!outcome.ok && outcome.txs.settle) console.error("the hire was paid: read the transactions above before running again (a re-run is another paid hire)");
   ok = outcome.ok;
   console.log(ok ? `PASS  hire ${outcome.taskId} (EM ${outcome.emTaskId}): ${plan.approved.spend} USDG paid, the escrow paid the worker, $WIF sent` : "FAIL");
 } catch (e) {

@@ -87,12 +87,12 @@ export interface HirePause {
 
 /**
  * What /api/info (and so the landing page) says about a pause: one fixed sentence per kind, with no wallet, amount,
- * contract or error text in it. The detail stays in the 503 and the server log.
+ * contract or error text in it. The 503 before the 402 says the same; the detail stays in the server log.
  */
 export function publicPause(kind: HirePauseKind, chainLabel: string): string {
   switch (kind) {
     case "unchecked":
-      return "Flat Fee has not reached Execution Market yet.";
+      return "Flat Fee has not finished checking that a hire can run yet.";
     case "escrow":
       return `Execution Market's escrow on ${chainLabel} cannot take a hire right now.`;
     case "refused":
@@ -104,13 +104,14 @@ export function publicPause(kind: HirePauseKind, chainLabel: string): string {
 
 /**
  * What becomes of a hire nobody finishes, as /api/info and the 201 of /api/hire tell the buyer: what this code does
- * (onPublished cancels a task nobody was assigned by its deadline, before anything is locked; a task EM expires after
- * an assignment ends expired, and EM sends its locked escrow back to the merchant) and nothing more. No refund either way.
+ * (a task nobody was assigned by its deadline is cancelled by onPublished or expired by EM, before anything is locked;
+ * a task EM expires after an assignment ends expired, and EM's expiry job sends its locked escrow back to the publisher,
+ * mcp_server/jobs/task_expiration.py) and nothing more. No refund either way.
  */
 export function hireExpiry(deadlineHours: number): string {
   return (
     `The task is on Execution Market, for any of its people to take. If no one takes it within ${deadlineHours} h, it expires ` +
-    "and Flat Fee cancels it there: nothing was locked for it. If the person who takes it does not deliver by then, " +
+    "there, with nothing locked for it. If the person who takes it does not deliver by then, " +
     "Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
   );
 }
@@ -294,9 +295,11 @@ export function createEmHire({
     const refused = publishRefused();
     if (refused) return { kind: "refused", detail: refused };
     // every hire whose escrow has not landed yet still needs a bounty from the merchant, and so does the next one
+    // never read (the RPC unreachable since boot): unknown, not short
+    if (balance === null) return { kind: "unchecked", detail: "the merchant wallet's USDG has not been read yet" };
     const unfunded = store.tasks().filter((t) => t.via === "em" && t.em && UNFUNDED.has(t.em.step)).length;
     const needed = em.bounty * BigInt(unfunded + 1);
-    if (balance === null || balance < needed) {
+    if (balance < needed) {
       return { kind: "funds", detail: `the merchant wallet cannot fund one more escrow (${formatUnits(needed, USDG_DECIMALS)} USDG needed for the open hires)` };
     }
     return null;

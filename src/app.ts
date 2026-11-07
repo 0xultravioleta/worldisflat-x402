@@ -213,7 +213,12 @@ export function createApp({
       if (unpublishable) return c.json({ error: unpublishable }, 400);
       // through Execution Market, a hire that could not be published or funded is refused before anyone pays for it
       const paused = route === "hire" ? (emHire?.unavailable() ?? null) : null;
-      if (paused) return c.json({ error: `hiring is paused: ${paused.detail}`, retryable: true }, 503);
+      // the same fixed sentence /api/info shows: anyone can ask without paying, so EM's words, the merchant wallet and
+      // the amounts of the detail stay in the server's log (written when the pause began)
+      if (paused) {
+        const reason = publicPause(paused.kind, cfg.chain.label);
+        return c.json({ error: `hiring is paused: ${reason}`, paused: { kind: paused.kind, reason }, retryable: true }, 503);
+      }
 
       const header = paymentHeaderOf((n) => c.req.header(n));
       if (header.conflict) return c.json({ error: "send one payment header: PAYMENT-SIGNATURE and X-PAYMENT differ" }, 400);

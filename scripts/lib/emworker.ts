@@ -4,9 +4,8 @@
 // profile is made on the fly) and `POST /api/v1/tasks/{id}/submit` with `{evidence: {text_response}}`.
 //
 // A worker proves who it is with an ERC-8128 signature of its own wallet, or with the session of EM's dashboard
-// (a bearer token). EM records how the request came in, and that decides whether the applicant counts as a person:
-// a plain ERC-8128 signature from a script is listed as an agent, which Flat Fee never assigns; a dashboard session is
-// listed as a human. `client` sends EM an X-EM-Client value with each signed request, only as approved by the operator.
+// (a bearer token). `client` is the client value the operator approved for the test worker, sent with each signed
+// request (X-EM-Client).
 import type { BaseWallet } from "ethers";
 import { signRequestWithSigner } from "uvd-x402-sdk/erc8128";
 

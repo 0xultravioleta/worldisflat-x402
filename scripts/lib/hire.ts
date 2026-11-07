@@ -84,7 +84,7 @@ export function hirePlanRefusal(cfg: Config, env: Env, payer: string): { refusal
   if (rpc) return no(rpc);
   const flatfee = origin(env.FLATFEE_URL);
   if (!flatfee) return no("FLATFEE_URL must be the running Flat Fee to buy from, an https origin (e.g. https://flatfee.ultravioletadao.xyz)");
-  const emApi = origin(env.EM_API_URL ?? "https://api.execution.market");
+  const emApi = origin(env.EM_API_URL?.trim() || "https://api.execution.market");
   if (!emApi) return no("EM_API_URL must be Execution Market's API origin, https");
   for (const [key, what] of [
     ["CONFIRM_MAINNET_SPEND", "the USDG the buyer pays for the hire (0.25 for a $WIF holder)"],
@@ -106,7 +106,7 @@ export function hirePlanRefusal(cfg: Config, env: Env, payer: string): { refusal
     }
     if (!key) return no("WORKER_MODE=erc8128 needs WORKER_PRIVATE_KEY, the worker's own wallet");
     if (!env.WORKER_EM_CLIENT?.trim()) {
-      return no("WORKER_MODE=erc8128: Execution Market lists a wallet that signs from a script as an agent, and Flat Fee assigns only people. Use manual or token, or set WORKER_EM_CLIENT to the client the operator approved");
+      return no("WORKER_MODE=erc8128 needs WORKER_EM_CLIENT, the client value the operator approved for the test worker (Flat Fee assigns only people); or use manual or token");
     }
     worker = computeAddress(key);
   } else {
@@ -207,6 +207,8 @@ export interface HireDeps {
   balances: Balances;
   payer: string;
   payTo: string;
+  /** the merchant wallet, which locks the escrow (PAY_TO itself in the deploy's one-wallet setup) */
+  merchant: string;
   explorerTx(hash: string): string;
   /** EM's fee bounds for the escrow (payment-config: escrow.max_fee_bps, fee_pct), to check the worker's payout */
   fees: { maxBps: number; pct: number | null };
@@ -230,7 +232,7 @@ export interface HireOutcome {
   emTaskId: string | null;
   txs: { settle: string | null; cashback: string | null; escrow: string | null; payment: string | null; reward: string | null };
   seen: Seen[];
-  deltas: { payerUsdg: bigint; payToUsdg: bigint; workerUsdg: bigint; workerWif: bigint; payerWif: bigint } | null;
+  deltas: { payerUsdg: bigint; payToUsdg: bigint; merchantUsdg: bigint; workerUsdg: bigint; workerWif: bigint; payerWif: bigint } | null;
 }
 
 /**
@@ -282,7 +284,22 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   const bounty = parseUnitsStrict(plan.approved.bounty, USDG_DECIMALS);
   const price = parseUnitsStrict(plan.approved.spend, USDG_DECIMALS);
 
-  const before = { payerUsdg: await d.balances.usdg(d.payer), payToUsdg: await d.balances.usdg(d.payTo), workerUsdg: await d.balances.usdg(plan.worker), workerWif: await d.balances.wif(plan.worker), payerWif: await d.balances.wif(d.payer) };
+  const oneWallet = sameAddr(d.merchant, d.payTo);
+
+  // the server's own word, read again right before paying: a run never pays for a hire it would refuse
+  let info: any = null;
+  try {
+    info = await d.flatfee("/api/info");
+  } catch (e) {
+    problems.push(`cannot read /api/info before paying: ${String((e as Error)?.message ?? e).slice(0, 160)}`);
+    return out(false, null, null);
+  }
+  if (info?.hire?.via !== "execution-market" || info.hire.available !== true) {
+    problems.push(`the server is not taking hires through Execution Market right now (${String(info?.hire?.paused?.reason ?? info?.hire?.via ?? "no answer").slice(0, 160)}): nothing paid`);
+    return out(false, null, null);
+  }
+
+  const before = { payerUsdg: await d.balances.usdg(d.payer), payToUsdg: await d.balances.usdg(d.payTo), merchantUsdg: await d.balances.usdg(d.merchant), workerUsdg: await d.balances.usdg(plan.worker), workerWif: await d.balances.wif(plan.worker), payerWif: await d.balances.wif(d.payer) };
   note("chain", `before: buyer ${formatUnits(before.payerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(before.payerWif, WIF_DECIMALS)} $WIF; worker ${formatUnits(before.workerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(before.workerWif, WIF_DECIMALS)} $WIF; pay-to ${formatUnits(before.payToUsdg, USDG_DECIMALS)} USDG`);
   if (before.payerUsdg < price) {
     problems.push(`the buyer holds ${formatUnits(before.payerUsdg, USDG_DECIMALS)} USDG, below the ${plan.approved.spend} it would pay`);
@@ -374,10 +391,25 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
     await d.sleep(plan.pollMs);
   }
 
+  // Flat Fee marks the task done before it sends the worker's $WIF and records its hash (src/emhire.ts finish): a read
+  // in between has no reward yet, so keep reading until the reward or its error is there
+  if (task?.status === "done" && reward > 0n) {
+    for (let i = 0; i < Math.ceil(180_000 / plan.pollMs) && !isTx(task?.rewardTx) && !task?.rewardError; i++) {
+      await d.sleep(plan.pollMs);
+      try {
+        await follow();
+      } catch {
+        // read again
+      }
+    }
+  }
+
   // Flat Fee stops reading a task once it closed it, so EM's own last status comes from EM, as the worker sees it
+  let emPaymentTx: string | null = null;
   if (emTaskId && d.worker?.task) {
     try {
       const t = (await d.worker.task(emTaskId)) as Record<string, unknown> | null;
+      if (isTx(t?.payment_tx)) emPaymentTx = t!.payment_tx as string;
       const f = (k: string) => (typeof t?.[k] === "string" ? `${k}=${String(t[k]).slice(0, 80)}` : null);
       note("worker", `GET /api/v1/tasks/${emTaskId}: ${["status", "escrow_status", "escrow_tx", "payment_tx"].map(f).filter(Boolean).join(" ") || "no status"}`);
     } catch (err) {
@@ -387,7 +419,7 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
 
   const e = task?.em ?? {};
   txs.escrow = isTx(e.escrowTx) ? e.escrowTx : null;
-  txs.payment = isTx(e.paymentTx) ? e.paymentTx : null;
+  txs.payment = isTx(e.paymentTx) ? e.paymentTx : emPaymentTx;
   txs.reward = isTx(task?.rewardTx) ? task.rewardTx : null;
   if (txs.escrow) note("chain", "escrow locked (the merchant's bounty)", txs.escrow);
   if (txs.payment) note("chain", "escrow released to the worker", txs.payment);
@@ -416,6 +448,7 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   const read = async () => ({
     payerUsdg: (await d.balances.usdg(d.payer)) - before.payerUsdg,
     payToUsdg: (await d.balances.usdg(d.payTo)) - before.payToUsdg,
+    merchantUsdg: (await d.balances.usdg(d.merchant)) - before.merchantUsdg,
     workerUsdg: (await d.balances.usdg(plan.worker)) - before.workerUsdg,
     workerWif: (await d.balances.wif(plan.worker)) - before.workerWif,
     payerWif: (await d.balances.wif(d.payer)) - before.payerWif,
@@ -425,7 +458,7 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
     await d.sleep(3_000);
     deltas = await read();
   }
-  note("chain", `after: buyer ${formatUnits(deltas.payerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(deltas.payerWif, WIF_DECIMALS)} $WIF; worker +${formatUnits(deltas.workerUsdg, USDG_DECIMALS)} USDG, +${formatUnits(deltas.workerWif, WIF_DECIMALS)} $WIF; pay-to ${formatUnits(deltas.payToUsdg, USDG_DECIMALS)} USDG`);
+  note("chain", `after: buyer ${formatUnits(deltas.payerUsdg, USDG_DECIMALS)} USDG, ${formatUnits(deltas.payerWif, WIF_DECIMALS)} $WIF; worker +${formatUnits(deltas.workerUsdg, USDG_DECIMALS)} USDG, +${formatUnits(deltas.workerWif, WIF_DECIMALS)} $WIF; pay-to ${formatUnits(deltas.payToUsdg, USDG_DECIMALS)} USDG${oneWallet ? " (the merchant)" : `; merchant ${formatUnits(deltas.merchantUsdg, USDG_DECIMALS)} USDG`}`);
 
   // 4. the verdict
   if (typeof task.answer !== "string" || task.answer.trim() !== plan.answer) problems.push("the buyer's answer on Flat Fee is not the text the worker delivered");
@@ -435,6 +468,11 @@ export async function runHire(plan: HirePlan, cfg: Config, d: HireDeps): Promise
   if (!txs.reward) problems.push(`no $WIF reward transaction${task.rewardError ? ` (${String(task.rewardError).slice(0, 160)})` : ""}`);
   if (cashback > 0n && !txs.cashback) problems.push("no $WIF cashback transaction for the buyer");
   if (deltas.payerUsdg !== -price) problems.push(`the buyer's USDG moved ${formatUnits(deltas.payerUsdg, USDG_DECIMALS)}, not -${plan.approved.spend}`);
+  // the merchant locked exactly the approved bounty (and PAY_TO got exactly the price): in the one-wallet setup, both in
+  // one balance. Another payment to these wallets during the run moves them too: read the txs above before any re-run
+  const merchantWant = oneWallet ? price - bounty : -bounty;
+  if (deltas.merchantUsdg !== merchantWant) problems.push(`the merchant's USDG moved ${formatUnits(deltas.merchantUsdg, USDG_DECIMALS)}, not ${formatUnits(merchantWant, USDG_DECIMALS)} (${oneWallet ? "the price in, the bounty out to the escrow" : "the bounty out to the escrow"}; any other payment to it during the run counts too)`);
+  if (!oneWallet && deltas.payToUsdg !== price) problems.push(`PAY_TO's USDG moved ${formatUnits(deltas.payToUsdg, USDG_DECIMALS)}, not +${plan.approved.spend}`);
   // the worker gets the bounty less EM's fee, never more than the bounty, never less than its largest fee allows
   const least = (bounty * BigInt(10_000 - d.fees.maxBps)) / 10_000n;
   if (deltas.workerUsdg > bounty || deltas.workerUsdg < least) problems.push(`the worker's USDG moved +${formatUnits(deltas.workerUsdg, USDG_DECIMALS)}, outside ${formatUnits(least, USDG_DECIMALS)}..${plan.approved.bounty} (the bounty less EM's fee)`);

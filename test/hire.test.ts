@@ -96,6 +96,8 @@ function emDouble(ledger: Ledger) {
     /** EM refuses reputation_network: robinhood at publish, as its route does with that network turned off */
     refuseReputation: false,
     cancels: [] as string[],
+    /** the approval answers without its payment_tx (Flat Fee then has none; the task on EM has it) */
+    approveWithoutTx: false,
     calls: [] as { method: string; path: string; wallet: string; as: string }[],
     applies: [] as { taskId: string; wallet: string; type: string }[],
   };
@@ -125,7 +127,7 @@ function emDouble(ledger: Ledger) {
       const v = await verifyRequest({ method: c.req.method, url: c.req.url, headers: Object.fromEntries(c.req.raw.headers), rawBody: bytes.length ? bytes : undefined }, policy);
       if (!v.ok) return c.json({ error: v.code, message: v.message }, v.status as 401);
       c.set("wallet", getAddress(v.wallet));
-      // how EM tells the parties apart (mcp_server/api/party.py): a signature from a script is an agent
+      // a signature from a script is an agent, unless it comes from the client the double is told to count as a person
       const viaAgent = st.humanClient !== null && c.req.header("x-em-client")?.toLowerCase() === st.humanClient;
       c.set("type", viaAgent ? "human_via_agent" : "agent");
       c.set("kind", viaAgent ? "human_via_agent" : "autonomous_agent");
@@ -208,7 +210,7 @@ function emDouble(ledger: Ledger) {
     ledger.move(ledger.usdg, RH.escrow, RECORDED.treasury, fee);
     Object.assign(s, { status: "accepted", agent_verdict: "accepted" });
     Object.assign(t, { status: "completed", escrow_status: "released", payment_tx: hash() });
-    return c.json({ success: true, data: { payment_tx: t.payment_tx } });
+    return c.json(st.approveWithoutTx ? { success: true, data: {} } : { success: true, data: { payment_tx: t.payment_tx } });
   });
   // the worker
   app.post("/api/v1/tasks/:id/apply", async (c) => {
@@ -311,7 +313,10 @@ before(() => {
 });
 
 /** a Flat Fee with EM_HIRE on (the deploy's shape, on mainnet), Execution Market's double, and the run's deps */
-function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | null } = {}) {
+function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | null; payTo?: string; slowReward?: boolean } = {}) {
+  const payTo = opts.payTo ?? merchant.address;
+  // the worker's $WIF is mined a while after Flat Fee marked the task done (src/emhire.ts finish): held until a later wait
+  let heldReward: (() => void) | null = null;
   const ledger = new Ledger();
   ledgers.length = 0;
   ledgers.push(ledger);
@@ -326,7 +331,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | 
   dirs.push(dir);
   const loaded = loadConfig({
     NETWORK: "robinhood",
-    PAY_TO: merchant.address,
+    PAY_TO: payTo,
     FACILITATOR_URL: facUrl,
     DATA_DIR: dir,
     WIF_CASHBACK: "10",
@@ -347,6 +352,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | 
     tierOf: async (owner): Promise<Tier> => (ledger.get(ledger.wif, owner) >= 100n * W ? "holder" : "standard"),
     sendWif: async (to, amount) => {
       ledger.move(ledger.wif, merchant.address, to, amount);
+      if (opts.slowReward && to === workerWallet.address) await new Promise<void>((r) => (heldReward = r));
       return { to, amount, tx: hash() };
     },
   };
@@ -395,13 +401,20 @@ function world(opts: { workerAuth?: "token" | "erc8128"; humanClient?: string | 
     worker: workerClient,
     balances: { usdg: async (a) => ledger.get(ledger.usdg, a), wif: async (a) => ledger.get(ledger.wif, a) },
     payer: buyer.address,
-    payTo: merchant.address,
+    payTo,
+    merchant: merchant.address,
     explorerTx: (h) => `${CHAINS.robinhood.explorer}/tx/${h}`,
     fees: { maxBps: RECORDED.escrow.max_fee_bps, pct: RECORDED.fee_pct },
     // each wait of the run is one pass of the server's loop (EM_POLL_SECONDS on the deploy)
     sleep: async (ms) => {
       clock += ms;
-      await hire.tick();
+      if (!opts.slowReward) return void (await hire.tick());
+      // a held reward is mined now; a pass that blocks on one does not hold up the run
+      if (heldReward) {
+        heldReward();
+        heldReward = null;
+      }
+      await Promise.race([hire.tick(), new Promise((r) => setTimeout(r, 20))]);
     },
     now: () => clock,
     log: (l) => lines.push(l),
@@ -425,7 +438,7 @@ test("e2e:hire against the doubles: paid, published, applied, escrow locked, del
   for (const [k, v] of Object.entries(o.txs)) assert.match(String(v), /^0x[0-9a-f]{64}$/, k);
   // the money, as the chain moved it: the buyer paid the holder price and got 10 $WIF back; the escrow paid the worker
   // the 0.20 bounty less EM's 13%, and Flat Fee sent the worker 50 $WIF; PAY_TO (the merchant here) got 0.25 and locked 0.20
-  assert.deepEqual(o.deltas, { payerUsdg: -250_000n, payToUsdg: 50_000n, workerUsdg: 174_000n, workerWif: 50n * W, payerWif: 10n * W });
+  assert.deepEqual(o.deltas, { payerUsdg: -250_000n, payToUsdg: 50_000n, merchantUsdg: 50_000n, workerUsdg: 174_000n, workerWif: 50n * W, payerWif: 10n * W });
   // Execution Market's statuses as Flat Fee read them, in order, and Flat Fee's own steps; Flat Fee closes the task in
   // the pass that approves it, so EM's last status is read by the worker, once
   const flat = o.seen.filter((s) => s.source === "flatfee");
@@ -521,6 +534,7 @@ test("the verdict reads the chain: a buyer charged more, a worker paid outside t
     { what: "the buyer paid 0.01 more", off: (who, k) => (k === "usdg" && who === buyer.address ? -10_000n : 0n), why: /the buyer's USDG moved -0.26, not -0.25/ },
     { what: "the worker got less than the bounty less EM's largest fee", off: (who, k) => (k === "usdg" && who === workerWallet.address ? -20_000n : 0n), why: /the worker's USDG moved \+0.154, outside 0.164..0.20/ },
     { what: "the worker got more than the bounty", off: (who, k) => (k === "usdg" && who === workerWallet.address ? 30_000n : 0n), why: /the worker's USDG moved \+0.204, outside/ },
+    { what: "the escrow took 0.01 more than the bounty from the merchant", off: (who, k) => (k === "usdg" && who === merchant.address ? -10_000n : 0n), why: /the merchant's USDG moved 0.04, not 0.05 \(the price in, the bounty out to the escrow/ },
     { what: "the buyer's cashback came short", off: (who, k) => (k === "wif" && who === buyer.address ? -1n : 0n), why: /the buyer's \$WIF moved \+9.999999999999999999, not the \+10 cashback/ },
   ];
   for (const c of cases) {
@@ -578,14 +592,53 @@ test("a server that would refuse the hire is never paid: /api/info says paused, 
   const info = (await (await w.call("/api/info")).json()) as Any;
   const why = remoteHireRefusal(runCfg(), info, planOf(), "0.25");
   assert.match(why ?? "", /not taking hires right now \(The wallet that pays the escrow cannot fund one more task right now\.\): refusing before anyone pays/);
+  // and the run itself reads /api/info again right before paying
+  const o = await runHire(planOf(), runCfg(), w.deps);
+  assert.equal(o.ok, false);
+  assert.match(o.problems.join("\n"), /not taking hires through Execution Market right now \(The wallet that pays the escrow cannot fund one more task right now\.\): nothing paid/);
   assert.equal(w.pays(), 0);
+  assert.equal(w.ledger.get(w.ledger.usdg, buyer.address), 588_716n);
+});
+
+test("the worker's $WIF is mined after Flat Fee marked the task done: the run waits for its hash instead of failing", async () => {
+  const w = world({ slowReward: true });
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), w.deps);
+  assert.deepEqual(o.problems, []);
+  assert.match(String(o.txs.reward), /^0x[0-9a-f]{64}$/);
+  // the run did see the task done with no reward yet, then the reward
+  const flat = o.seen.filter((x) => x.source === "flatfee").map((x) => x.what);
+  const doneNoReward = flat.findIndex((l) => /status=done/.test(l) && !/rewardTx=/.test(l));
+  const doneReward = flat.findIndex((l) => /status=done/.test(l) && /rewardTx=0x/.test(l));
+  assert.ok(doneNoReward >= 0 && doneReward > doneNoReward, flat.join("\n"));
+});
+
+test("an approval that came back without its payment tx: the release tx is the one EM shows the worker on the task", async () => {
+  const w = world({ workerAuth: "erc8128", humanClient: "an-approved-client" });
+  w.em.st.approveWithoutTx = true;
+  await w.hire.tick();
+  const o = await runHire(planOf(), runCfg(), w.deps);
+  assert.deepEqual(o.problems, []);
+  const t = (await (await w.call(`/api/tasks/${o.taskId}`)).json()) as Any;
+  assert.equal(t.em.paymentTx, null);
+  assert.equal(o.txs.payment, w.em.st.tasks.get(o.emTaskId!)!.payment_tx);
+});
+
+test("PAY_TO apart from the merchant: PAY_TO gets the price, the merchant locks the bounty, each checked on chain", async () => {
+  const shop = Wallet.createRandom().address;
+  const w = world({ payTo: shop });
+  await w.hire.tick();
+  const o = await runHire(planOf({ ...RUN_ENV, PAY_TO: shop }), loadConfig({ ...RUN_ENV, PAY_TO: shop }), w.deps);
+  assert.deepEqual(o.problems, []);
+  assert.equal(o.deltas!.payToUsdg, 250_000n);
+  assert.equal(o.deltas!.merchantUsdg, -200_000n);
 });
 
 // ------------------------------------------------------------------------------------------------- nobody finishes it
 test("what a buyer is told about a hire nobody finishes, word for word, in /api/info and in the 201", async () => {
   const told =
-    "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires and Flat Fee cancels it there: " +
-    "nothing was locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. " +
+    "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. " +
+    "If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. " +
     "Either way, the fee you paid is not refunded.";
   assert.equal(hireExpiry(24), told);
   const w = world();
@@ -708,7 +761,12 @@ test("the rules: mainnet only, the private RPC only, every amount approved, a wo
   assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: undefined })!, /needs WORKER_PRIVATE_KEY/);
   assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: "0x1234" })!, /WORKER_PRIVATE_KEY is not a private key \(0x and 64 hex digits\); the value is not shown/);
   // a script's ERC-8128 worker is an agent to Execution Market, and Flat Fee assigns only people
-  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey })!, /lists a wallet that signs from a script as an agent/);
+  assert.match(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey })!, /WORKER_MODE=erc8128 needs WORKER_EM_CLIENT, the client value the operator approved/);
+  // an empty EM_API_URL (a .env copied from .env.example) is Execution Market's own
+  for (const empty of ["", "  "]) {
+    const p = hirePlanRefusal(loadConfig(RUN_ENV), { ...RUN_ENV, EM_API_URL: empty }, buyer.address);
+    assert.ok("plan" in p && p.plan.emApi === "https://api.execution.market", JSON.stringify(empty));
+  }
   assert.equal(refusal({ WORKER_MODE: "erc8128", WORKER_PRIVATE_KEY: workerWallet.privateKey, WORKER_EM_CLIENT: "x" }), null);
   // nobody else's wallet: not the buyer, not PAY_TO, not the merchant, in any case
   assert.match(refusal({ WORKER_WALLET: buyer.address.toUpperCase().replace("0X", "0x") })!, /cannot be the buyer/);
@@ -742,7 +800,7 @@ test("the server must be the one approved: Execution Market on, taking hires, th
   assert.match(remoteHireRefusal(cfg, { ...info, payTo: Wallet.createRandom().address }, plan, "0.25")!, /pay-to/);
   const cases: [Any, RegExp, string?][] = [
     [{ ...info, hire: { via: "board" } }, /hires through board, not Execution Market/],
-    [{ ...info, hire: { ...info.hire, available: false, paused: { kind: "unchecked", reason: "Flat Fee has not reached Execution Market yet." } } }, /not taking hires right now \(Flat Fee has not reached Execution Market yet\.\)/],
+    [{ ...info, hire: { ...info.hire, available: false, paused: { kind: "unchecked", reason: "Flat Fee has not finished checking that a hire can run yet." } } }, /not taking hires right now \(Flat Fee has not finished checking that a hire can run yet\.\)/],
     [{ ...info, hire: { ...info.hire, available: undefined } }, /not taking hires right now \(it does not say why\)/],
     [{ ...info, hire: { ...info.hire, available: "true" } }, /not taking hires right now/],
     [{ ...info, hire: { ...info.hire, bounty: "0.3" } }, /locks 0.3 USDG per hire, CONFIRM_MAINNET_BOUNTY is 0.20/],

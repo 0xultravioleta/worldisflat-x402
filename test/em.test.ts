@@ -569,8 +569,9 @@ interface Setup {
   logs: string[];
 }
 
-// the merchant's USDG on the chain double
+// the merchant's USDG on the chain double, and whether reading it fails
 let merchantUsdg = 10n ** 9n;
+let usdgFails = false;
 
 /** the app with Execution Market switched on, after the first check of EM (as `start()` does at boot) */
 async function setup(
@@ -596,7 +597,10 @@ async function setup(
     releaseOrder: (pi) => releaseOrder({ cfg, wallet: merchant }, pi),
     // the SDK has no Robinhood testnet row; the tests that are not about that stand in for its builder
     ready: (pc) => escrowReadiness(cfg, pc, opts.readyBuild ?? opts.build ?? testBuild),
-    usdgBalance: async () => merchantUsdg,
+    usdgBalance: async () => {
+      if (usdgFails) throw new Error("the RPC is down");
+      return merchantUsdg;
+    },
     log: (m) => logs.push(m),
     now,
   });
@@ -981,7 +985,8 @@ test("Execution Market refuses the task at publish: it ends expired with the rea
   // the next buyer is not charged for a task EM would refuse too
   const next = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "x" }) });
   assert.equal(next.status, 503);
-  assert.match(((await next.json()) as Any).error, /refused the task/);
+  assert.equal(((await next.json()) as Any).error, "hiring is paused: Execution Market refused this server's last task; hiring waits for the operator.");
+  assert.match(s.hire.unavailable()!.detail, /refused the task: .*422 invalid_payment_token/);
 });
 
 // EM's publish refusals as its routes write them (a675eb6: services/publish_errors.py, content_review.py,
@@ -1576,7 +1581,12 @@ test("a hire that could not run on Execution Market is refused before the 402, s
     const r = await call(s.app, "/api/hire", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "a small task" }) });
     assert.equal(r.status, 503);
     const body = (await r.json()) as Any;
-    assert.match(body.error, why);
+    const p = s.hire.unavailable()!;
+    assert.match(p.detail, why);
+    // what anyone sees without paying: the kind and its fixed sentence, never the detail (EM's words, a wallet, an amount)
+    const reason = publicPause(p.kind, s.cfg.chain.label);
+    assert.deepEqual(body, { error: `hiring is paused: ${reason}`, paused: { kind: p.kind, reason }, retryable: true });
+    assert.doesNotMatch(JSON.stringify(body), /0x[0-9a-f]{6,}|\d+(\.\d+)?\s*USDG|answered \d{3}/i);
     assert.equal(r.headers.get("payment-required"), null);
     assert.equal(s.em.st.creates.length, 0);
     // asking the agent is not affected
@@ -1591,6 +1601,12 @@ test("a hire that could not run on Execution Market is refused before the 402, s
   t.em.knobs.network = { ...t.em.knobs.network, tokens: { USDC: { address: USDG } } };
   await t.hire.tick();
   await refusedBefore402(t, /does not take USDG/);
+  // the merchant's USDG could not be read (the RPC down since boot): unknown, not short
+  usdgFails = true;
+  const unread = await setup();
+  usdgFails = false;
+  assert.equal(unread.hire.unavailable()!.kind, "unchecked");
+  await refusedBefore402(unread, /USDG has not been read yet/);
   // the merchant cannot fund one bounty
   merchantUsdg = 199_999n;
   await refusedBefore402(await setup(), /cannot fund one more escrow/);
@@ -1636,7 +1652,7 @@ test("/api/info says whether a hire would be taken now and, when not, why, in a 
   const unchecked = await setup({}, { check: false });
   assert.deepEqual(await info(unchecked), {
     via: "execution-market", bounty: "0.2", deadlineHours: 24, available: false,
-    paused: { kind: "unchecked", reason: "Flat Fee has not reached Execution Market yet." },
+    paused: { kind: "unchecked", reason: "Flat Fee has not finished checking that a hire can run yet." },
     expiry: hireExpiry(24),
   });
   assert.equal((await hire503(unchecked)).status, 503);
@@ -1651,10 +1667,11 @@ test("/api/info says whether a hire would be taken now and, when not, why, in a 
   assert.equal(funds.available, false);
   assert.deepEqual(funds.paused, { kind: "funds", reason: "The wallet that pays the escrow cannot fund one more task right now." });
   clean(funds, "funds");
-  // the 503 keeps its detail, amount included: it is the same check
+  // the 503 says the same sentence; the detail, amount included, stays on the server
   const r = await hire503(ok);
   assert.equal(r.status, 503);
-  assert.match(r.error, /0\.4 USDG needed/);
+  assert.equal(r.error, `hiring is paused: ${funds.paused.reason}`);
+  assert.match(ok.hire.unavailable()!.detail, /0\.4 USDG needed/);
 
   // EM's escrow on this network is not the one Flat Fee is configured with
   merchantUsdg = 10n ** 9n;
@@ -1665,7 +1682,8 @@ test("/api/info says whether a hire would be taken now and, when not, why, in a 
   assert.equal(e.available, false);
   assert.deepEqual(e.paused, { kind: "escrow", reason: `Execution Market's escrow on ${testnet} cannot take a hire right now.` });
   clean(e, "escrow");
-  assert.match((await hire503(escrow)).error, /operator on robinhood-testnet is not the one/);
+  assert.equal((await hire503(escrow)).error, `hiring is paused: ${e.paused.reason}`);
+  assert.match(escrow.hire.unavailable()!.detail, /operator on robinhood-testnet is not the one/);
   // EM refusing to show its parameters at all is the same kind
   const banned = await setup();
   banned.em.knobs.configForbidden = true;
@@ -1681,7 +1699,8 @@ test("/api/info says whether a hire would be taken now and, when not, why, in a 
   assert.equal(p.available, false);
   assert.deepEqual(p.paused, { kind: "refused", reason: "Execution Market refused this server's last task; hiring waits for the operator." });
   clean(p, "refused");
-  assert.match((await hire503(refused)).error, /invalid_payment_token/);
+  assert.equal((await hire503(refused)).error, `hiring is paused: ${p.paused.reason}`);
+  assert.match(refused.hire.unavailable()!.detail, /invalid_payment_token/);
 
   // every kind has its sentence, and none of them names a wallet, an amount or a contract
   for (const kind of ["unchecked", "escrow", "refused", "funds"] as const) {

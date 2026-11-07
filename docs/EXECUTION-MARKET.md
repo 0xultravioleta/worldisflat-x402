@@ -114,10 +114,11 @@ also stops the next buyers from paying.
 (EM not reached since boot), `escrow` (EM's escrow on the network is not Flat Fee's, cannot be built, or EM refused to
 show it), `refused` (EM refused the last publish for the settings or identity) or `funds` (the merchant cannot fund one
 more escrow), and `reason` is one fixed sentence per kind (`publicPause` in `src/emhire.ts`) with no wallet, amount,
-contract or EM text in it; the 503 keeps the full detail. `hire.expiry` (also in the 201 of `/api/hire`) tells the buyer
+contract or EM text in it; the 503 before the 402 says the same, and the detail stays in the server's log. `hire.expiry` (also in the 201 of `/api/hire`) tells the buyer
 what becomes of a hire nobody finishes (`hireExpiry`): the task is on Execution Market for any of its people to take; if
-nobody takes it by the deadline it is cancelled there, with nothing locked; if the person who took it does not deliver
-by then, EM returns the escrowed pay to the merchant; the fee is not refunded either way.
+nobody takes it by the deadline it expires there, with nothing locked; if the person who took it does not deliver by
+then, EM's expiry job returns the escrowed pay to the merchant; the fee is not refunded either way. While hiring is
+paused, the page's hire button is off.
 
 How a publish EM did not take is handled (`publishRefusal` in `src/emhire.ts`):
 
@@ -239,7 +240,8 @@ SDK builds that escrow), and that each key reaches the container through `deploy
 1. Once, before anything else: `npm run em:register` with the merchant's key, then again with
    `CONFIRM_EM_REGISTER=<the merchant's address>`, until it says `completed` (above).
 2. One redeploy with the environment of `em-hire.env` (it also moves `PUBLIC_URL` to the public domain, below). The new
-   container starts with an empty `DATA_DIR`.
+   container starts with an empty `DATA_DIR`, and so does every restart after it: hires open at that moment are
+   orphaned (above), and a pause kept after EM refused a publish is forgotten, so check `/api/info` after any restart.
 3. `GET /api/info` answers `hire.via: "execution-market"` and, once the first check passed, `hire.available: true`.
 4. `npm run e2e:hire` (below) buys one hire and follows it to the worker's payout.
 
@@ -268,10 +270,9 @@ and, once its escrow locked, delivers a text answer; at the end it reads Executi
 worker, and checks on chain that the buyer paid exactly the price and got the cashback, and that the worker got the
 bounty less EM's fee and exactly the reward. It never prints a key, a session or the RPC URL.
 
-The worker (`WORKER_MODE`): `erc8128` signs with its own wallet (`WORKER_PRIVATE_KEY`). Execution Market records how a
-worker's request came in (`mcp_server/api/party.py`): a wallet that signs from a script is listed as an agent, and Flat
-Fee assigns only people, so this mode also needs `WORKER_EM_CLIENT`, the client value the operator approved, which EM
-lists as a person working through an agent. `token` uses a person's dashboard session (`WORKER_EM_TOKEN`), and
+The worker (`WORKER_MODE`): `erc8128` signs with its own wallet (`WORKER_PRIVATE_KEY`) and needs `WORKER_EM_CLIENT`,
+the client value the operator approved for the test worker (without it the run refuses: Flat Fee assigns only
+people). `token` uses a person's dashboard session (`WORKER_EM_TOKEN`), and
 `manual` waits for a person on execution.market (`WORKER_WALLET`) to apply and deliver the text the run prints. If
 someone else applies with a better reputation and Flat Fee picks them, the run says so and delivers nothing.
 

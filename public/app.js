@@ -54,6 +54,11 @@ async function loadInfo() {
     b.disabled = !!blocked;
     if (blocked) b.title = blocked;
   }
+  // hiring paused: nobody is asked to connect a wallet for a hire the server would refuse before its 402
+  if (!blocked && copy.escrow === "paused") {
+    $("#hire-pay").disabled = true;
+    $("#hire-pay").title = copy.statusText;
+  }
   if (blocked) {
     // a local fork (npm run demo): the demo already paid; what is left to try is the task board
     $("#fork-notice").textContent = blocked;

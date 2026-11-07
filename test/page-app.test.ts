@@ -269,6 +269,10 @@ test("with hiring paused (EM_HIRE on, the merchant cannot fund one more escrow) 
     assert.equal(visibleText($("#escrow-foot")), "Escrow on Robinhood Chain Testnet. Deadline 720 h.");
     assert.equal(visibleText($("#board-meta")), "tasks on Execution Market");
     assert.equal(visibleText($("#escrow-expiry")), hireExpiry(720));
+    // the hire button is off, saying why; asking the agent is not affected
+    assert.equal($("#hire-pay").disabled, true);
+    assert.equal($("#hire-pay").title, reason);
+    assert.equal($("#ask-pay").disabled, false);
     // nothing on the page says escrow runs now, and the 503's detail is nowhere on it
     const text = visibleText(doc.body);
     assert.doesNotMatch(text, /\blive\b|with escrow:|goes to Execution Market/i);

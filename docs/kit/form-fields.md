@@ -56,7 +56,7 @@ Video: [VIDEO_URL]
 ### Team
 `[SAUL_FULL_NAME]` here and `[SAUL_WALLET_PUBLIC_ADDRESS]` in *Form fields* below are filled in the form, by Saúl, and never in this repo: it is public.
 ```text
-Team (placeholders): Saúl ([SAUL_FULL_NAME], @0xultravioleta, lead and submitter) · c0der ([C0DER_NAME], engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
+Team (placeholders): Saúl ([SAUL_FULL_NAME], @0xultravioleta, lead and submitter) · c0der (engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
 ```
 ### Form fields
 ```text

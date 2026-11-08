@@ -5,10 +5,10 @@
 // balances, the Execution Market task, the wallets and the prices. Also the owner's sentence that the worker is a team
 // test wallet and not a person, the server's own words for a hire nobody takes (hireExpiry, as GET /api/info serves
 // it), the merchant's identity, and the lengths SUBMISSION.md gives for the texts to paste in the form. And the team:
-// the owner's X in both docs and in the kit, and no full name or prize wallet in this public repo (the owner types
-// them in the form). No network.
+// the owner's X in both docs and in the kit, no [SAUL_…] or [C0DER_…] placeholder in either doc, and no full name or
+// prize wallet in this public repo (the owner types them in the form). No network.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { Wallet, formatUnits } from "ethers";
 import { loadConfig } from "../src/config.js";
@@ -20,6 +20,9 @@ const EM_DOC = readFileSync("docs/EXECUTION-MARKET.md", "utf8");
 const LOG = readFileSync("docs/evidence/e2e-hire-2026-11-07.txt", "utf8");
 const KIT_README = readFileSync("docs/kit/README-draft.md", "utf8");
 const KIT_FORM = readFileSync("docs/kit/form-fields.md", "utf8");
+const KIT_CLICKS = readFileSync("docs/kit/00-CLICKS.md", "utf8");
+/** every file of the kit for the form, by name */
+const KIT = new Map(readdirSync("docs/kit").filter((f) => f.endsWith(".md")).map((f) => [f, readFileSync(`docs/kit/${f}`, "utf8")]));
 
 /** KEY=VALUE lines of the deploy's settings, comments and blank lines skipped */
 function envFile(file: string): Record<string, string> {
@@ -351,20 +354,35 @@ test("SUBMISSION: the length given for each text to paste is its length", () => 
   }
 });
 
-test("the team: the owner's X in both docs and the kit; the full name and the prize wallet only in the form", () => {
+test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] or [C0DER_…] placeholder but the full name and the prize wallet, which only the form gets", () => {
   const X = "[@0xultravioleta](https://x.com/0xultravioleta)";
   assert.ok(section(README, "## Team").includes(`Saúl (${X}) and c0der.`), `README's team links ${X}`);
   assert.ok(section(KIT_README, "## Team").includes(`Saúl (${X}) and c0der.`), `the kit's README draft links ${X}`);
-  // the line pasted in the form, and nothing after the handle: no full name, no wallet
-  assert.match(section(SUBMISSION, "## 1. Your team"), /^Lead: Saúl \(@0xultravioleta\)$/m);
-  assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\)/m);
+  // the lines pasted in the form: nothing after the lead's handle (no full name, no wallet), and c0der by its name
+  const team = section(SUBMISSION, "## 1. Your team");
+  assert.match(team, /^Lead: Saúl \(@0xultravioleta\)$/m);
+  assert.match(team, /^Members: add c0der only if Saúl decides\. /m);
+  assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\) · c0der \(engineering; /m);
+  const PERSON = /\[(?:SAUL|C0DER)_\w*\]/gi;
   for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION]]) {
-    assert.doesNotMatch(doc, /\[SAUL_\w*\]/i, `${name}: a [SAUL_…] placeholder`);
+    assert.deepEqual(doc.match(PERSON), null, `${name}: no [SAUL_…] or [C0DER_…] placeholder`);
   }
-  for (const [name, doc] of [["docs/kit/README-draft.md", KIT_README], ["docs/kit/form-fields.md", KIT_FORM]]) {
-    assert.doesNotMatch(doc, /\[SAUL_X_HANDLE\]/i, `${name}: the X handle placeholder`);
+  assert.ok(KIT.size >= 6 && KIT.has("form-fields.md") && KIT.has("00-CLICKS.md"), "the kit's files");
+  // the kit keeps two, the ones filled in the form, never in this repo: the full name (in its team line, above) and
+  // the wallet, in the very lines pasted in the form; the click list names them too, and no other file of the kit does
+  for (const [f, doc] of KIT) {
+    const want = f === "form-fields.md" || f === "00-CLICKS.md" ? ["[SAUL_FULL_NAME]", "[SAUL_WALLET_PUBLIC_ADDRESS]"] : [];
+    assert.deepEqual([...new Set(doc.match(PERSON) ?? [])].sort(), want, `docs/kit/${f}: its [SAUL_…] and [C0DER_…] placeholders`);
   }
-  // the kit for the form keeps the full name (in its team line, above) and the wallet as placeholders, in the very
-  // lines pasted in the form: they are filled in the form, never in this repo
   assert.ok(section(KIT_FORM, "### Form fields").includes("demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]."), "the kit keeps the wallet placeholder");
+  // and both the form's fields and the click list say so, in the same words; the click list no longer has them replaced
+  const FORM_ONLY = "are filled in the form, by Saúl, and never in this repo: it is public.";
+  for (const [name, doc] of [["form-fields.md", KIT_FORM], ["00-CLICKS.md", KIT_CLICKS]]) {
+    const says = doc.split("\n").filter((l) => l.includes(FORM_ONLY));
+    assert.equal(says.length, 1, `${name} says once: ${FORM_ONLY}`);
+    for (const p of ["`[SAUL_FULL_NAME]`", "`[SAUL_WALLET_PUBLIC_ADDRESS]`"]) assert.ok(says[0].includes(p), `${name}: ${p} ${FORM_ONLY}`);
+  }
+  const replace = /Search form-fields\.md for `\[` and replace: ([^\n]*?)\. /.exec(section(KIT_CLICKS, "## Fill these placeholders first (only Saúl has them)"));
+  assert.ok(replace, "the click list says what to replace");
+  assert.doesNotMatch(replace[1], /name|wallet|personal|address/i, `the click list replaces no name or wallet: ${replace[1]}`);
 });

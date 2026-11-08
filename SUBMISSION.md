@@ -107,7 +107,7 @@ The lead's full name and the prize wallet are typed in the form by Saúl, never 
 ```text
 Team: Ultravioleta DAO
 Lead: Saúl (@0xultravioleta)
-Members: add c0der ([C0DER_NAME]) only if Saúl decides. Up to 4 people; each person can be on one team only.
+Members: add c0der only if Saúl decides. Up to 4 people; each person can be on one team only.
 ```
 
 ## 2. Your project

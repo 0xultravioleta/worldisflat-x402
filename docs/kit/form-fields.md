@@ -3,7 +3,7 @@
 - **Submit at:** https://worldisflat.fun/build
 - **Deadline:** Sat Oct 31, 2026 (time not published; finish by 9:00 AM EDT)
 - **Brief:** briefs/04-world-is-flat.md (PENDING c0der capacity)
-- **Rule:** copy each block as-is. Replace every `[PLACEHOLDER]` first. Grok Bot did NOT register, save or submit anything.
+- **Rule:** copy each block as-is. Replace every `[PLACEHOLDER]` first (the full name and the wallet in the form only, see *Team*). Grok Bot did NOT register, save or submit anything.
 
 Source: worldisflat.fun/build; no public field list.
 
@@ -54,8 +54,9 @@ Settlement tx: [EXPLORER_TX_URL]
 Video: [VIDEO_URL]
 ```
 ### Team
+`[SAUL_FULL_NAME]` here and `[SAUL_WALLET_PUBLIC_ADDRESS]` in *Form fields* below are filled in the form, by Saúl, and never in this repo: it is public.
 ```text
-Team (placeholders): Saúl ([SAUL_FULL_NAME], @[SAUL_X_HANDLE], lead and submitter) · c0der ([C0DER_NAME], engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
+Team (placeholders): Saúl ([SAUL_FULL_NAME], @0xultravioleta, lead and submitter) · c0der ([C0DER_NAME], engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
 ```
 ### Form fields
 ```text

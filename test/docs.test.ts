@@ -4,7 +4,9 @@
 // it): every transaction hash, the amounts and the direction written next to each one and no other amount, the end
 // balances, the Execution Market task, the wallets and the prices. Also the owner's sentence that the worker is a team
 // test wallet and not a person, the server's own words for a hire nobody takes (hireExpiry, as GET /api/info serves
-// it), the merchant's identity, and the lengths SUBMISSION.md gives for the texts to paste in the form. No network.
+// it), the merchant's identity, and the lengths SUBMISSION.md gives for the texts to paste in the form. And the team:
+// the owner's X in both docs and in the kit, and no full name or prize wallet in this public repo (the owner types
+// them in the form). No network.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -16,6 +18,8 @@ const README = readFileSync("README.md", "utf8");
 const SUBMISSION = readFileSync("SUBMISSION.md", "utf8");
 const EM_DOC = readFileSync("docs/EXECUTION-MARKET.md", "utf8");
 const LOG = readFileSync("docs/evidence/e2e-hire-2026-11-07.txt", "utf8");
+const KIT_README = readFileSync("docs/kit/README-draft.md", "utf8");
+const KIT_FORM = readFileSync("docs/kit/form-fields.md", "utf8");
 
 /** KEY=VALUE lines of the deploy's settings, comments and blank lines skipped */
 function envFile(file: string): Record<string, string> {
@@ -345,4 +349,22 @@ test("SUBMISSION: the length given for each text to paste is its length", () => 
     }
     assert.equal([...text].length, Number(n), `${field}: ${n} chars`);
   }
+});
+
+test("the team: the owner's X in both docs and the kit; the full name and the prize wallet only in the form", () => {
+  const X = "[@0xultravioleta](https://x.com/0xultravioleta)";
+  assert.ok(section(README, "## Team").includes(`Saúl (${X}) and c0der.`), `README's team links ${X}`);
+  assert.ok(section(KIT_README, "## Team").includes(`Saúl (${X}) and c0der.`), `the kit's README draft links ${X}`);
+  // the line pasted in the form, and nothing after the handle: no full name, no wallet
+  assert.match(section(SUBMISSION, "## 1. Your team"), /^Lead: Saúl \(@0xultravioleta\)$/m);
+  assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\)/m);
+  for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION]]) {
+    assert.doesNotMatch(doc, /\[SAUL_\w*\]/i, `${name}: a [SAUL_…] placeholder`);
+  }
+  for (const [name, doc] of [["docs/kit/README-draft.md", KIT_README], ["docs/kit/form-fields.md", KIT_FORM]]) {
+    assert.doesNotMatch(doc, /\[SAUL_X_HANDLE\]/i, `${name}: the X handle placeholder`);
+  }
+  // the kit for the form keeps the full name (in its team line, above) and the wallet as placeholders, in the very
+  // lines pasted in the form: they are filled in the form, never in this repo
+  assert.ok(section(KIT_FORM, "### Form fields").includes("demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]."), "the kit keeps the wallet placeholder");
 });

@@ -102,9 +102,11 @@ Ratings of every Execution Market task written on Robinhood Chain (ERC-8004), on
 
 ## 1. Your team
 
+The lead's full name and the prize wallet are typed in the form by Saúl, never written here: this file is public.
+
 ```text
 Team: Ultravioleta DAO
-Lead (prize wallet): Saúl ([SAUL_FULL_NAME], @[SAUL_X_HANDLE]), wallet [SAUL_WALLET_PUBLIC_ADDRESS]
+Lead: Saúl (@0xultravioleta)
 Members: add c0der ([C0DER_NAME]) only if Saúl decides. Up to 4 people; each person can be on one team only.
 ```
 

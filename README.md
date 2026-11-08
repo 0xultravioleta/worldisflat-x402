@@ -332,7 +332,7 @@ Market picks the network), an LLM behind the agent, and subscriptions priced in 
 
 ## Team
 
-Ultravioleta DAO: Saúl (`[SAUL_X_HANDLE]`) and c0der. Built with help from AI coding agents.
+Ultravioleta DAO: Saúl ([@0xultravioleta](https://x.com/0xultravioleta)) and c0der. Built with help from AI coding agents.
 
 ## License
 

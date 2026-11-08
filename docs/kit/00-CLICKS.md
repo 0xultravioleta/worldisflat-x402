@@ -8,7 +8,7 @@
 - **Copy from:** `kits/world-is-flat/form-fields.md` (in form order), video from `video-script.md`, deck PDF from `deck-outline.md`.
 
 ## Fill these placeholders first (only Saúl has them)
-Search form-fields.md for `[` and replace: repo URL (after Saúl approves making it public), video URL (after upload), demo URL, personal fields (name, email, handles), wallet/public addresses, IDs.
+Search form-fields.md for `[` and replace: repo URL (after Saúl approves making it public), video URL (after upload), demo URL, IDs. `[SAUL_FULL_NAME]` and `[SAUL_WALLET_PUBLIC_ADDRESS]` are filled in the form, by Saúl, and never in this repo: it is public.
 
 ## Clicks left for Saúl
 1. Sign in / join (Saúl only: login, passkey, 2FA).

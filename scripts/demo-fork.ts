@@ -18,7 +18,7 @@ import { CHAINS, loadConfig } from "../src/config.js";
 import { createFacilitatorDouble } from "../src/double/facilitator.js";
 import { Store } from "../src/store.js";
 import { fundFromHolder, setEth, startFork } from "./lib/anvil.js";
-import { rpcOrExit } from "./lib/env.js";
+import { exitRedacted, rpcOrExit } from "./lib/env.js";
 
 const chainInfo = CHAINS.robinhood;
 const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"; // holds USDG and $WIF on mainnet; impersonated on the fork only
@@ -26,6 +26,8 @@ const port = Number(process.env.PORT ?? 3000);
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const source = rpcOrExit("robinhood", process.env, "npm run demo forks Robinhood Chain mainnet: set RPC_URL to a mainnet RPC (see README, Try it).");
+// the fork reads through RPC_URL, which can carry an API key: an error nobody caught is printed without it
+exitRedacted([source]);
 const fork = await startFork(source, chainInfo.chainId, port + 2);
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-demo-"));
 const merchant = Wallet.createRandom();

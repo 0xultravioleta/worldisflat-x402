@@ -131,20 +131,20 @@ documents public ones (`https://rpc.mainnet.chain.robinhood.com`, `https://rpc.t
 demo runs on a private one.
 
 1. `git clone https://github.com/0xultravioleta/worldisflat-x402 && cd worldisflat-x402 && npm install`
-2. **`RPC_URL=<a mainnet RPC> npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet, made through that RPC, with the real
+2. **`NETWORK=robinhood RPC_URL=<a mainnet RPC> npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet, made through that RPC, with the real
    USDG and $WIF contracts, and has already paid for one question and one hire task from a throwaway wallet. You see
    both rows under **Paid calls**, each with its settlement and its $WIF cashback, and the task under **Task board**
    (both open on their own on the fork). Enter any address and the worker token `demo`, click **Claim**, type an answer
    and click **Complete**: the task turns `done` and the worker receives 50 $WIF. The **Pay …** buttons are off on the
    demo (see Safety). (The tx links point at the real explorer and do not resolve there:
    those transactions only exist on the fork.)
-3. **`RPC_URL=<a mainnet RPC> npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
+3. **`NETWORK=robinhood RPC_URL=<a mainnet RPC> npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
    terms, unpaid rejection of bad input, a paid question through the SDK, USDG moving payer → merchant, the settlement
    mined, the $WIF cashback, the landing page's own payment code, a replayed payment refused, three concurrent copies of one payment charged
    once, the holder price, a
    non-holder refused at the holder price, hire → claim → complete with the worker's $WIF, and the facilitator double
    refusing a wrong amount, recipient, asset, network, an expired authorization and a bad signature.
-   `RPC_URL=<a testnet RPC> npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (18 checks, no $WIF there).
+   `NETWORK=robinhood-testnet RPC_URL=<a testnet RPC> npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (18 checks, no $WIF there).
 4. **`NETWORK=robinhood-testnet RPC_URL=<a testnet RPC> npm run verify:testnet`**: against the **real** facilitator on
    Robinhood Chain Testnet, read-only: the payer is a fresh throwaway wallet with no funds, so nothing can settle. Three
    `PASS` lines: our EIP-712 domain equals USDG's on-chain `DOMAIN_SEPARATOR()` on testnet (mainnet's is proven by the

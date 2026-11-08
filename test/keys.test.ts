@@ -190,6 +190,9 @@ test("a live script reads or pays only once RPC_URL answers its chain's id, and 
     ["scripts/balances.ts", [], { PAYER_PRIVATE_KEY: good, RPC_URL: `${base}/half/SECRETKEY0123` }, /^error: /m],
     ["scripts/verify-testnet.ts", [], { RPC_URL: `${base}/denied/SECRETKEY0123` }, /^RPC_URL could not be read: /m],
     ["scripts/verify-testnet.ts", [], { RPC_URL: `${base}/mainnet/SECRETKEY0123` }, /RPC_URL answers chain 4663, not Robinhood Chain Testnet \(46630\)/],
+    // the chain id is right, then the RPC refuses: the error nobody catches is printed without RPC_URL (exitRedacted)
+    ["scripts/verify-testnet.ts", [], { RPC_URL: `${base}/half/SECRETKEY0123` }, /^error: /m],
+    ["scripts/e2e-live.ts", ["robinhood-testnet"], { PAYER_PRIVATE_KEY: good, RPC_URL: `${base}/half/SECRETKEY0123` }, /^error: /m],
   ];
   try {
     const results = await Promise.all(cases.map(([script, args, env, want]) => run(script, args, env).then((r) => ({ script, env, want, ...r }))));

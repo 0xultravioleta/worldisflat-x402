@@ -313,17 +313,25 @@ test("SUBMISSION's transactions: only hashes, one per line, the Robinhood Chain 
   // the form keeps them as written: splitting at spaces and commas gives the same lines
   assert.deepEqual(formList(TX_HASHES), lines, "tx_hashes: the form's list is the lines");
   assert.equal(new Set(lines).size, lines.length, "tx_hashes: no hash twice");
-  // the 2 Nov question's, then the hire's, in the README's order; no Base transaction (the identity's)
-  const want = [EARLIER_TXS.settle, EARLIER_TXS.cashback, RUN.txs.settle, RUN.txs.cashback, RUN.txs.escrow, RUN.txs.payment, RUN.txs.reward];
-  assert.deepEqual(lines, want, "tx_hashes: the seven, in order");
-  const readme = new Set([...README.matchAll(TX)].map((m) => m[1]));
-  for (const h of lines) assert.ok(readme.has(h), `tx_hashes: ${h} is a Robinhood Chain transaction the README links to`);
-  // and the line under the block names the ones that move $WIF by their place: the second, the fourth and the last
-  const nth = ["first", "second", "third", "fourth", "fifth", "sixth"];
-  const wifTxs = [EARLIER_TXS.cashback, RUN.txs.cashback, RUN.txs.reward].map((h) => lines.indexOf(h));
-  const where = wifTxs.map((i) => (i === lines.length - 1 ? "the last" : `the ${nth[i]}`));
-  const said = `Three of them move $WIF: ${where.slice(0, -1).join(", ")} and ${where.at(-1)}.`;
-  assert.ok(norm(section(FORM_SECTION, "### transactions · `tx_hashes` · a list, one hash per line")).includes(said), `SUBMISSION says: ${said}`);
+  // only the ones that move $WIF (the field asks for transactions "where your product uses $wif", and the judges' panel
+  // marks each one "moves $wif" or "no $wif moved"): the 2 Nov cashback, then the hire's cashback and reward. No Base
+  // transaction (the identity's), no USDG payment and no escrow
+  const want = [EARLIER_TXS.cashback, RUN.txs.cashback, RUN.txs.reward];
+  assert.deepEqual(lines, want, "tx_hashes: the three that move $WIF, in order");
+  // each one is a Robinhood Chain transaction the README links to, on a row that moves "<n> $WIF"; and every README
+  // row that moves $WIF is here
+  const rows = README.split("\n").filter((l) => l.startsWith("| ") && /robinhoodchain\.blockscout\.com\/tx\//.test(l));
+  const movesWif = new Set(rows.filter((l) => /(?<![\w.])\d+ \$WIF\b/.test(l.split("](")[0])).flatMap((l) => [...l.matchAll(TX)].map((m) => m[1])));
+  assert.deepEqual([...movesWif].sort(), [...lines].sort(), "tx_hashes: exactly the README's rows that move $WIF");
+  // and the note under the block, the intro and the click list say how many there are, and why
+  const note = norm(section(FORM_SECTION, "### transactions · `tx_hashes` · a list, one hash per line"));
+  assert.ok(note.includes("The three that move $WIF, on Robinhood Chain mainnet, as the README cites them"), `the note under tx_hashes: ${note}`);
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+  for (const [name, doc] of [["SUBMISSION.md", SUBMISSION], ["docs/kit/00-CLICKS.md", KIT_CLICKS]]) {
+    const counts = [...norm(doc).matchAll(/\bthe (\w+) (?:hashes|Robinhood Chain transactions)\b/gi)].map((m) => m[1].toLowerCase());
+    assert.ok(counts.length > 0, `${name} says how many hashes`);
+    for (const c of counts) assert.equal(c, words[lines.length], `${name}: "the ${c} hashes", and there are ${lines.length}`);
+  }
 });
 
 test("SUBMISSION's answers: the links are the README's, every amount is the deploy's or the run's", () => {
@@ -489,19 +497,27 @@ test("docs/kit: form-fields.md maps the real form, field for field; the click li
     FORM.map((f) => [f.step, f.key, f.kind, f.cap === null ? "-" : String(f.cap)]),
     "form-fields.md: every field of the form, with its step, kind and cap",
   );
-  assert.equal(rows.find((r) => r[3] === "payout_address")![6], "`[SAUL_WALLET_PUBLIC_ADDRESS]`", "the kit keeps the wallet placeholder");
+  assert.equal(rows.find((r) => r[3] === "payout_address")![6], "the prize wallet, typed by the owner in the form", "the kit's payout wallet row");
   // the anchor both use is the heading's
   const link = `../../SUBMISSION.md#${anchor(FORM_HEADING)}`;
   assert.equal(anchor(FORM_HEADING), "form-fields-worldisflatfun-edit-submission");
   for (const [name, doc] of [["form-fields.md", KIT_FORM], ["00-CLICKS.md", KIT_CLICKS]]) {
     assert.ok(doc.includes(`](${link})`), `${name} links to ${link}`);
-    // no placeholder left but the two only Saúl fills in
-    for (const p of doc.match(/\[[A-Z][A-Z0-9_]*\]/g) ?? []) assert.ok(["[SAUL_FULL_NAME]", "[SAUL_WALLET_PUBLIC_ADDRESS]", "[PLACEHOLDER]"].includes(p), `${name}: ${p}`);
+    // no placeholder left at all: the owner types the lead's own fields in the form, from no file here
+    assert.deepEqual(doc.match(/\[[A-Z][A-Z0-9_]*\]/g), null, `${name}: a placeholder`);
   }
   assert.ok(SUBMISSION.includes(`](#${anchor(FORM_HEADING)})`), "SUBMISSION's header links to its form section");
   // what the owner pastes or reads to paste names no RPC: not the public one, not the variable (c0der, 2026-11-08)
   for (const [name, doc] of [["SUBMISSION.md", SUBMISSION], ...[...KIT].map(([f, d]) => [`docs/kit/${f}`, d])]) {
     assert.doesNotMatch(doc, /rpc/i, `${name} names an RPC`);
+  }
+  // form-fields.md maps the form and holds nothing to paste: no text block at all
+  assert.equal([...KIT_FORM.matchAll(/^```/gm)].length, 0, "form-fields.md: a block to paste");
+  // the form opens with the answers of 2 Nov and maxlength cuts without a word: every paste goes over a selected field
+  for (const [name, doc] of [["SUBMISSION, the form section's intro", FORM_INTRO], ["docs/kit/form-fields.md", KIT_FORM], ["docs/kit/00-CLICKS.md", KIT_CLICKS]]) {
+    const plain = norm(doc).replace(/\*/g, "");
+    assert.match(plain, /in every field,? select all \(Cmd\+A\) and paste the block (?:of SUBMISSION\.md's Form fields )?over it/, `${name}: select all, then paste over it`);
+    assert.match(plain, /\btransactions(?:,|:) delete every item that is there first/, `${name}: empty transactions first`);
   }
   // every other file of the kit opens with the notice that it is outdated
   for (const [f, doc] of KIT) {
@@ -510,48 +526,49 @@ test("docs/kit: form-fields.md maps the real form, field for field; the click li
   }
 });
 
-test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] or [C0DER_…] placeholder but the full name and the prize wallet, which only the form gets", () => {
+test("the team: the owner's X and c0der in both docs and the kit; no person's placeholder; the form has no full-name field, and the prize wallet goes only in payout_address", () => {
   const X = "[@0xultravioleta](https://x.com/0xultravioleta)";
   assert.ok(section(README, "## Team").includes(`Saúl (${X}) and c0der.`), `README's team links ${X}`);
   assert.ok(section(KIT_README, "## Team").includes(`Saúl (${X}) and c0der.`), `the kit's README draft links ${X}`);
-  // SUBMISSION's team step, whole: nothing to paste, its note, the lead by the handle and c0der by its name, and no
-  // address anywhere in it: no full name, no prize wallet
-  const NOTE = "The lead's full name and the prize wallet are typed in the form by Saúl, never written here: this file is public.";
+  // the form's team step (form.js: team_name, email, github_profile, contact_handle, payout_address) has no full-name
+  // field: SUBMISSION's team step, form-fields.md and the click list say so in the same words, and none of them asks
+  // for a full name
+  const TEAM_STEP = "The team step has no full-name field; the prize wallet goes only in payout_address, typed by the owner in the form.";
+  assert.deepEqual(FORM.filter((f) => f.step === "your team").map((f) => f.key), ["team_name", "email", "github_profile", "contact_handle", "payout_address"]);
   const team = norm(TEAM);
   assert.ok(team.startsWith("### your team Nothing to paste: "), "SUBMISSION's team step: nothing to paste");
-  assert.ok(team.includes(NOTE), `SUBMISSION's team step says: ${NOTE}`);
   assert.ok(team.includes("The team is Saúl (@0xultravioleta), the lead, and c0der, added as a member only if Saúl decides (up to 4 people, each on one team only)."), "SUBMISSION's team step: the lead and c0der");
   assert.doesNotMatch(TEAM, /0x[0-9a-fA-F]{40}|```|@[\w.-]+\.\w/, "SUBMISSION's team step: an address, a block or an email");
-  assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\) · c0der \(engineering; /m);
-  // a person's placeholder: Saúl's, with the accent or without it, or c0der's (with a zero or an O)
+  for (const [name, doc] of [["SUBMISSION, the team step", TEAM], ["docs/kit/form-fields.md", KIT_FORM], ["docs/kit/00-CLICKS.md", KIT_CLICKS]]) {
+    assert.ok(norm(doc).includes(TEAM_STEP), `${name} says: ${TEAM_STEP}`);
+  }
+  for (const [name, doc] of [["SUBMISSION.md", SUBMISSION], ...[...KIT].map(([f, d]) => [`docs/kit/${f}`, d])]) {
+    assert.doesNotMatch(norm(doc), /full name/i, `${name} speaks of a full name the form has no field for`);
+  }
+  // a person's placeholder (Saúl's, with the accent or without it, or c0der's, with a zero or an O): none anywhere
   const PERSON = /\[(?:SA[UÚ]L|C[0O]DER)_\w*\]/gi;
-  for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION]]) {
-    assert.deepEqual(doc.match(PERSON), null, `${name}: no [SAUL_…] or [C0DER_…] placeholder`);
-  }
   assert.ok(KIT.size >= 6 && KIT.has("form-fields.md") && KIT.has("00-CLICKS.md"), "the kit's files");
-  // the kit keeps two, the ones filled in the form, never in this repo: the full name (in its team line, above) and
-  // the wallet, in the very lines pasted in the form; the click list names them too, and no other file of the kit does
-  for (const [f, doc] of KIT) {
-    const want = f === "form-fields.md" || f === "00-CLICKS.md" ? ["[SAUL_FULL_NAME]", "[SAUL_WALLET_PUBLIC_ADDRESS]"] : [];
-    assert.deepEqual([...new Set(doc.match(PERSON) ?? [])].sort(), want, `docs/kit/${f}: its [SAUL_…] and [C0DER_…] placeholders`);
+  for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION], ...[...KIT].map(([f, d]) => [`docs/kit/${f}`, d])]) {
+    assert.deepEqual(doc.match(PERSON), null, `${name}: a [SAUL_…] or [C0DER_…] placeholder`);
   }
-  // the wallet's placeholder is the payout wallet's row of the kit's table (the docs/kit test above)
-  // form-fields.md's Rule bullet sends those two to the form
-  const rule = KIT_FORM.split("\n").filter((l) => l.startsWith("- **Rule:**"));
-  assert.equal(rule.length, 1, "form-fields.md has one Rule bullet");
-  assert.ok(rule[0].includes("Replace every `[PLACEHOLDER]` first (the full name and the wallet in the form only, see *Team*)."), `form-fields.md's Rule: ${rule[0]}`);
-  // and both the form's fields and the click list say so, in the same words
-  const FORM_ONLY = "are filled in the form, by Saúl, and never in this repo: it is public.";
-  for (const [name, doc] of [["form-fields.md", KIT_FORM], ["00-CLICKS.md", KIT_CLICKS]]) {
-    const says = doc.split("\n").filter((l) => l.includes(FORM_ONLY));
-    assert.equal(says.length, 1, `${name} says once: ${FORM_ONLY}`);
-    for (const p of ["`[SAUL_FULL_NAME]`", "`[SAUL_WALLET_PUBLIC_ADDRESS]`"]) assert.ok(says[0].includes(p), `${name}: ${p} ${FORM_ONLY}`);
+  // the click list's section on what only the owner types: that sentence, then nothing else to fill in
+  const own = norm(section(KIT_CLICKS, "## What only the owner types"));
+  assert.ok(own.includes(TEAM_STEP), `the click list says: ${TEAM_STEP}`);
+  assert.doesNotMatch(own.replace(TEAM_STEP, ""), /name|wallet|e-?mail|handle|personal|address|\[/i, `the click list asks for nothing else: ${own}`);
+});
+
+test("README links no private UltravioletaDAO repository, and the demo's example task asks for a text answer", () => {
+  // Execution Market's repository is private (a judge sees 404): the README points at https://execution.market
+  assert.doesNotMatch(README, /github\.com\/UltravioletaDAO\/execution-market/i, "README links the private execution-market repo");
+  assert.ok(section(README, "## What existed before, and what was built during the hackathon").includes("[Execution Market](https://execution.market)"));
+  // Execution Market takes only text_response: the task the live page offers, and npm run demo's, ask for text
+  const page = readFileSync("public/index.html", "utf8");
+  const task = /<textarea id="request"[^>]*>([^<]*)<\/textarea>/.exec(page)?.[1];
+  assert.ok(task, "public/index.html has the #request textarea");
+  const demo = /request: "([^"]+)"/.exec(readFileSync("scripts/demo-fork.ts", "utf8"))?.[1];
+  for (const [name, t] of [["public/index.html #request", task], ["scripts/demo-fork.ts", demo]] as const) {
+    assert.ok(t, name);
+    assert.doesNotMatch(t, /photo|picture|image|video|selfie|upload/i, `${name} asks for more than text: ${t}`);
+    assert.match(t, /\bin text\b/, `${name} asks for a text answer: ${t}`);
   }
-  // the click list's whole section, that sentence aside, has no name, wallet, email or handle left to replace
-  const CLICKS_FORM_ONLY = "`[SAUL_FULL_NAME]` and `[SAUL_WALLET_PUBLIC_ADDRESS]` " + FORM_ONLY;
-  const fill = section(KIT_CLICKS, "## Fill these placeholders first (only Saúl has them)");
-  assert.equal(fill.split(CLICKS_FORM_ONLY).length, 2, `the click list says once: ${CLICKS_FORM_ONLY}`);
-  const rest = fill.replace(CLICKS_FORM_ONLY, "");
-  assert.match(rest, /^Search form-fields\.md for `\[` and replace: /m, "the click list says what to replace");
-  assert.doesNotMatch(rest, /name|wallet|e-?mail|handle|personal|address/i, `the click list replaces no name, wallet, email or handle: ${rest}`);
 });

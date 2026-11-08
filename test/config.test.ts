@@ -62,6 +62,12 @@ test("the chains' public RPCs are only a fact for the wallet's add network: no c
   const clients = files.flatMap((f) => readFileSync(f, "utf8").split("\n").filter((l) => l.includes("new X402Client(")).map((l) => [f, l] as const));
   assert.ok(clients.length >= 4, "the X402Clients");
   for (const [f, l] of clients) assert.match(l, /new X402Client\(\{ defaultChain: [^,]+, rpcOverrides: \{ /, `${f}: an X402Client without rpcOverrides: ${l.trim()}`);
+  // every script that reads RPC_URL (rpcOrExit, configOrExit) prints an error nobody caught without it (exitRedacted),
+  // and buy.ts's own catch does too
+  const readers = files.filter((f) => /^scripts\/[^/]+\.ts$/.test(f) && /\b(?:rpcOrExit|configOrExit)\(/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(readers.sort(), ["scripts/balances.ts", "scripts/buy.ts", "scripts/demo-fork.ts", "scripts/e2e-fork.ts", "scripts/e2e-hire.ts", "scripts/e2e-live.ts", "scripts/verify-testnet.ts"], "the scripts that read RPC_URL");
+  for (const f of readers) assert.match(readFileSync(f, "utf8"), /^exitRedacted\(\[/m, `${f} reads RPC_URL and does not redact what it prints`);
+  assert.match(readFileSync("scripts/buy.ts", "utf8"), /\} catch \(e\) \{\n  console\.error\(safeMessage\(e, \[cfg\.rpcUrl\]\)\);/, "scripts/buy.ts prints its error without RPC_URL");
   // and no other file writes a public Robinhood Chain RPC out
   for (const f of files) {
     if (f === "src/config.ts") continue;

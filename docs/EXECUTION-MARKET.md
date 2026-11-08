@@ -235,9 +235,9 @@ still open leaves them unattended too: nobody approves them and no $WIF goes out
 ### Turning it on in the deploy
 
 The container's whole environment with hiring through Execution Market on is `deploy/aws/em-hire.env` (no secrets:
-`MERCHANT_PRIVATE_KEY` and `WORKER_TOKEN` are the container's own: through Terraform they stay in `terraform.tfvars`,
-but a Lightsail deployment made any other way takes its environment whole, so both go with it again, or `EM_HIRE=on`
-refuses to start without the merchant key). `test/deploy.test.ts` loads that file the
+`MERCHANT_PRIVATE_KEY`, `WORKER_TOKEN` and `RPC_URL` are the container's own: through Terraform they stay in
+`terraform.tfvars`, but a Lightsail deployment made any other way takes its environment whole, so all three go with it
+again, or the server does not start). `test/deploy.test.ts` loads that file the
 way the server does, checks every `EM_*` value against EM's recorded payment-config for Robinhood Chain (and that the
 SDK builds that escrow), and that each key reaches the container through `deploy/aws/main.tf` (`em_*` variables in
 `terraform.tfvars`) and is in `.env.example`.

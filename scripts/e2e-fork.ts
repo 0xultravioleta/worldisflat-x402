@@ -16,7 +16,7 @@ import { CHAINS, USDG_DECIMALS, WIF_DECIMALS, formatUnits, loadConfig, type Netw
 import { createFacilitatorDouble } from "../src/double/facilitator.js";
 import { Store } from "../src/store.js";
 import { balance, fundFromHolder, setEth, startFork } from "./lib/anvil.js";
-import { rpcOrExit } from "./lib/env.js";
+import { exitRedacted, rpcOrExit } from "./lib/env.js";
 
 // holders the fork borrows from (impersonated on the fork only): the Uniswap v4 PoolManager on mainnet, a large
 // testnet USDG holder on testnet
@@ -39,6 +39,8 @@ function check(step: string, ok: boolean, detail: string) {
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const source = rpcOrExit(network, process.env, `npm run e2e:fork forks ${chainInfo.label}: set RPC_URL to an RPC of it (see README, Try it).`);
+// the fork reads through RPC_URL, which can carry an API key: an error nobody caught is printed without it
+exitRedacted([source]);
 const fork = await startFork(source, chainInfo.chainId, port(1));
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-e2e-"));
 const servers: { close: () => void }[] = [];

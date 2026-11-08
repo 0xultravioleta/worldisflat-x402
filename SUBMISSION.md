@@ -17,22 +17,24 @@
 
 The form's fields in its order, as its own script defines them
 (https://worldisflat.fun/build/assets/js/form.js?v=0d65455f4eb5, read on 8 Nov 2026): one block per field, with its
-length and the field's cap, all within it. Paste each block whole into its field. The blocks are plain text for plain
-text boxes: no markdown, links as bare URLs, one line each, ASCII only, so any way of counting gives the length written.
-*transactions* is a list, which the form splits at spaces and commas: it gets transaction hashes only, one per line.
-The fields that are a choice say what to pick. Pasted, the texts replace the ones the form holds from 2 Nov.
+length and the field's cap, all within it. The form opens filled with the answers of 2 Nov, and its maxlength cuts
+without a word whatever does not fit: in every field, select all (Cmd+A) and paste the block over it; in *transactions*,
+delete every item that is there first. The blocks are plain text for plain text boxes: no markdown, links as bare URLs,
+one line each, ASCII only, so any way of counting gives the length written. *transactions* is a list, which the form
+splits at spaces and commas: it gets transaction hashes only, one per line. The fields that are a choice say what to
+pick.
 
 They cite the first hire through Execution Market on mainnet, 7 Nov 2026 (task
 3175424d-4f83-45cc-b871-92d9dcd3ffe3; [README, *A hire through Execution
 Market*](README.md#a-hire-through-execution-market-7-nov-2026)). The worker in this run is a test wallet of the team,
 driven by a script, that declares itself to Execution Market as a PayBox client (human_via_agent); it is not a person
-and not a real customer. *how it's made* tells the run with that sentence, and *transactions* lists its five Robinhood
-Chain transactions after the two of the paid question of 2 Nov. Saúl pastes them; nothing here was sent.
+and not a real customer. *how it's made* tells the run with that sentence. *transactions* lists the three Robinhood Chain
+transactions that move $WIF: the cashback of the paid question of 2 Nov, then the hire's cashback and reward. Saúl pastes them; nothing here was sent.
 
 ### your team
 
 Nothing to paste: this step stays as Saúl filled it on 2 Nov (the team name, UltravioletaDAO, and the lead's own
-fields). The lead's full name and the prize wallet are typed in the form by Saúl, never written here: this file is public.
+fields). The team step has no full-name field; the prize wallet goes only in payout_address, typed by the owner in the form. It is never written here: this file is public.
 The team is Saúl (@0xultravioleta), the lead, and c0der, added as a member only if Saúl decides (up to 4 people, each on
 one team only).
 
@@ -54,10 +56,10 @@ Ask an agent or hire a human via Execution Market, flat USDG fee, $WIF back
 
 Keep the three of 2 Nov, the first one the main one: agents and ai, consumer and payments, tools and infra.
 
-### what it does · `what_it_does` · 1281 of 1500 chars
+### what it does · `what_it_does` · 1411 of 1500 chars
 
 ```text
-Flat Fee sells two things on Robinhood Chain, one call at a time: an answer from an agent that reads live chain data (balances, blocks, gas, $WIF), or a human hired through Execution Market for a small task answered in text. Its HTTP endpoint answers 402 Payment Required with a price in USDG. A wallet or an agent signs one EIP-3009 authorization, Ultravioleta's open-source x402 facilitator settles it on chain, and the endpoint answers the question, or hires a human through Execution Market: Flat Fee publishes the task there, its wallet locks the worker's pay in a USDG escrow on Robinhood Chain, and Flat Fee approves the text answer on its own, which releases the escrow to the worker. Paid calls send $WIF back, up to a daily budget; $WIF holders who name their wallet pay half; workers whose answer Flat Fee approves earn 50 $WIF on top. No accounts, no API keys, no gas for the buyer. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+Flat Fee sells two things on Robinhood Chain, one call at a time: an answer from an agent that reads live chain data (balances, blocks, gas, $WIF), or a human hired through Execution Market for a small task answered in text. Its HTTP endpoint answers 402 Payment Required with a price in USDG. A wallet or an agent signs one EIP-3009 authorization, Ultravioleta's open-source x402 facilitator settles it on chain, and the endpoint answers the question, or hires a human through Execution Market: Flat Fee publishes the task there, its wallet locks the worker's pay in a USDG escrow on Robinhood Chain, and Flat Fee approves the text answer on its own, which releases the escrow to the worker. Paid calls send $WIF back, up to a daily budget; $WIF holders who name their wallet pay half; workers whose answer Flat Fee approves earn 50 $WIF on top. No accounts, no API keys, no gas for the buyer. The USDG payments and the escrow's lock and release are Robinhood Chain transactions too, with their hashes in the repo's README. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
 ```
 
 ### who it's for · `who_its_for` · 483 of 500 chars
@@ -124,18 +126,15 @@ https://flatfee.ultravioletadao.xyz
 ### transactions · `tx_hashes` · a list, one hash per line
 
 ```text
-0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33
 0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640
-0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54
 0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a
-0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9
-0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346
 0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6
 ```
 
-All on Robinhood Chain mainnet, as the README cites them: the paid question of 2 Nov (its USDG settlement, its $WIF
-cashback), then the hire of 7 Nov (the payment, the $WIF cashback, the escrow lock, the escrow's release to the test
-worker, the $WIF reward). Three of them move $WIF: the second, the fourth and the last.
+The three that move $WIF, on Robinhood Chain mainnet, as the README cites them: the $WIF cashback of the paid question of
+2 Nov, then the hire of 7 Nov's $WIF cashback and its $WIF reward to the test worker. The field asks for transactions
+where the product uses $wif, and the judges' panel marks each one "moves $wif" or "no $wif moved": the USDG payments and
+the escrow's lock and release stay in the README's evidence, not here.
 
 ### how it's made · `how_its_made` · 1492 of 1500 chars
 
@@ -153,10 +152,11 @@ Ratings of every Execution Market task written on Robinhood Chain (ERC-8004), on
 
 - [ ] Saúl opens "edit submission", pastes each block above into its field in the form's order, picks or ticks the
   choice fields as written, and saves each step (the form also saves a step 2 s after typing stops).
-- [ ] On the review step, every answer read back against this section: *transactions* as the seven hashes and nothing
+- [ ] On the review step, every answer read back against this section: *transactions* as the three hashes and nothing
   else, *how it's made* with the sentence about the test worker. Before 12 Nov 2026, 17:30 UTC.
-- [x] The seven transactions are the Robinhood Chain mainnet ones the README cites: the paid question of 2 Nov, and the
-  hire of 7 Nov, whose five hashes and amounts are the ones `npm run e2e:hire` printed
+- [x] The three transactions are Robinhood Chain mainnet ones the README cites, the ones that move $WIF: the cashback of
+  the paid question of 2 Nov, and the hire of 7 Nov's cashback and reward, whose hashes and amounts are the ones
+  `npm run e2e:hire` printed
   ([docs/evidence/e2e-hire-2026-11-07.txt](docs/evidence/e2e-hire-2026-11-07.txt)). `test/docs.test.ts` checks every
   block against its field's cap, the hashes and amounts against the run, and the sentence about its worker. The
   merchant's identity (agent 1170265) is not in that output: it comes from Execution Market's public record

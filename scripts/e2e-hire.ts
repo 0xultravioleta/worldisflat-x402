@@ -24,11 +24,13 @@ import { connectChain } from "../src/chain.js";
 import { privateKey, txUrl } from "../src/config.js";
 import { buy } from "./lib/buyer.js";
 import { emWorker } from "./lib/emworker.js";
-import { configOrExit, keyOrExit } from "./lib/env.js";
+import { configOrExit, exitRedacted, keyOrExit } from "./lib/env.js";
 import { hirePlanRefusal, hireWiring, remoteHireRefusal, runHire } from "./lib/hire.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const cfg = configOrExit(process.env);
+// and an error nobody caught is printed without them either
+exitRedacted([cfg.rpcUrl, process.env.WORKER_EM_TOKEN?.trim()]);
 const key = keyOrExit("PAYER_PRIVATE_KEY");
 const payer = new Wallet(key).address;
 const stop = (msg: string): never => {

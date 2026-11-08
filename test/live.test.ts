@@ -6,7 +6,8 @@ import { ledgerCashback, livePassed, liveRunRefusal, remoteRefusal } from "../sc
 const PAY_TO = "0x00000000000000000000000000000000000000aa";
 const KEY = "0x" + "11".repeat(32);
 const WIF = 10n * 10n ** 18n;
-const mainnet = (env: Record<string, string> = {}) => loadConfig({ PAY_TO, NETWORK: "robinhood", ...env });
+const RPC_URL = "http://127.0.0.1:9";
+const mainnet = (env: Record<string, string> = {}) => loadConfig({ PAY_TO, NETWORK: "robinhood", RPC_URL, ...env });
 
 test("e2e:mainnet refuses before reading the chain unless the USDG spend and the $WIF cashback are both approved", () => {
   const withCashback = mainnet({ WIF_CASHBACK: "10", MERCHANT_PRIVATE_KEY: KEY });
@@ -25,7 +26,7 @@ test("e2e:mainnet will not settle USDG without the $WIF leg, even when CONFIRM_M
 });
 
 test("a testnet run needs no approval", () => {
-  assert.equal(liveRunRefusal(loadConfig({ PAY_TO }), {}), null);
+  assert.equal(liveRunRefusal(loadConfig({ PAY_TO, RPC_URL }), {}), null);
 });
 
 test("a live run passes only when the call was served, the USDG moved and the whole cashback landed", () => {

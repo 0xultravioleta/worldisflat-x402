@@ -8,6 +8,8 @@ wif_cashback         = "10"
 wif_worker_reward    = "50"
 wif_daily_budget     = "500"
 merchant_private_key = ""
+# required: the private RPC of the network above (RPC_URL; it can carry an API key)
+rpc_url              = ""
 # required, at least 16 characters: openssl rand -hex 16
 worker_token         = ""
 # hire through Execution Market (docs/EXECUTION-MARKET.md): "off", or "on" with the values of deploy/aws/em-hire.env

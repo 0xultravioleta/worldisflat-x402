@@ -1,6 +1,7 @@
 // Starts anvil on a fork of Robinhood Chain and gives the helpers the fork run needs (impersonated funding, balances).
 import { spawn, type ChildProcess } from "node:child_process";
 import { Contract, JsonRpcProvider, getAddress, toBeHex } from "ethers";
+import { safeMessage } from "../../src/app.js";
 import { waitForReceipt } from "../../src/receipt.js";
 
 export interface Fork {
@@ -21,10 +22,18 @@ export async function startFork(forkUrl: string, chainId: number, port: number):
     throw new Error("anvil not found: install Foundry (https://book.getfoundry.sh) to run the fork e2e");
   }
   let stderr = "";
+  let gone = false;
   child.stderr?.on("data", (d) => (stderr += d));
   const exited = new Promise<never>((_, reject) => {
-    child.on("error", () => reject(new Error("anvil not found: install Foundry (https://book.getfoundry.sh)")));
-    child.on("exit", (code) => reject(new Error(`anvil exited (${code}): ${stderr.slice(0, 400)}`)));
+    child.on("error", () => {
+      gone = true;
+      reject(new Error("anvil not found: install Foundry (https://book.getfoundry.sh)"));
+    });
+    // the fork's source is RPC_URL, which can carry an API key: anvil's own words are told without it
+    child.on("exit", (code) => {
+      gone = true;
+      reject(new Error(`anvil exited (${code}): ${safeMessage(stderr, [forkUrl])}`));
+    });
   });
   const url = `http://127.0.0.1:${port}`;
   const provider = new JsonRpcProvider(url, chainId, { staticNetwork: true, pollingInterval: 200 });
@@ -35,6 +44,8 @@ export async function startFork(forkUrl: string, chainId: number, port: number):
         await provider.getBlockNumber();
         return;
       } catch {
+        // anvil is gone: the exit above already says why, so stop asking
+        if (gone) return;
         if (Date.now() > deadline) throw new Error("anvil did not answer within 60 s");
         await new Promise((r) => setTimeout(r, 300));
       }

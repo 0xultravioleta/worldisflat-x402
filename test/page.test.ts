@@ -51,6 +51,7 @@ before(() => {
   // the live demo's shape: mainnet, $WIF cashback on, hiring on Flat Fee's own board (EM_HIRE off)
   const cfg = loadConfig({
     NETWORK: "robinhood",
+    RPC_URL: "http://127.0.0.1:9",
     PAY_TO: payTo,
     FACILITATOR_URL: `http://127.0.0.1:${facPort}`,
     DATA_DIR: dir,

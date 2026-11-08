@@ -1,3 +1,5 @@
+> **Outdated.** Drafted on 29 Oct 2026, before Flat Fee was built: its name (Ask & Hire) and its placeholders are not the product, so do not post it. What Flat Fee is and does: [README.md](../../README.md).
+
 # Social post drafts: World Is Flat (Robinhood Chain)
 
 **Do not post. Saúl posts from his own account after submission (or before, where the rules require it).**

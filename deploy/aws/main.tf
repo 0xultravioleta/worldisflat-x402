@@ -66,6 +66,17 @@ variable "merchant_private_key" {
   sensitive = true
 }
 
+# The private RPC the server reads and sends through (RPC_URL): required, there is no default and no public RPC is
+# used. It can carry an API key, so it is kept like the merchant key.
+variable "rpc_url" {
+  type      = string
+  sensitive = true
+  validation {
+    condition     = length(trimspace(var.rpc_url)) > 0
+    error_message = "rpc_url is required: the private RPC of the network (the server refuses to start without RPC_URL)."
+  }
+}
+
 # WIF_WORKER_REWARD needs it, or the container refuses to start; it also gates the task board
 variable "worker_token" {
   type      = string
@@ -154,6 +165,7 @@ resource "aws_lightsail_container_service_deployment_version" "flatfee" {
     command        = []
     environment = {
       NETWORK                    = var.network
+      RPC_URL                    = var.rpc_url
       PAY_TO                     = var.pay_to
       PUBLIC_URL                 = var.public_url
       WIF_CASHBACK               = var.wif_cashback

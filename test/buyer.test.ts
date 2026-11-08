@@ -5,6 +5,7 @@ import { after, before, test } from "node:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { Wallet } from "ethers";
+import { SUPPORTED_CHAINS } from "uvd-x402-sdk";
 import { buy } from "../scripts/lib/buyer.js";
 
 const key = Wallet.createRandom().privateKey;
@@ -49,6 +50,14 @@ test("the checked offer is signed and paid", async () => {
   const r = await run(good, good);
   assert.equal(r.status, 200);
   assert.equal(paid.length, 1);
+});
+
+test("the buyer's wallet connects through the RPC it is given (RPC_URL), never the SDK's public default", async () => {
+  const before = SUPPORTED_CHAINS["robinhood-testnet"].rpcUrl;
+  const r = await run(good, good, { rpcUrl: "http://127.0.0.1:9/given" });
+  assert.equal(r.status, 200);
+  assert.notEqual(before, "http://127.0.0.1:9/given");
+  assert.equal(SUPPORTED_CHAINS["robinhood-testnet"].rpcUrl, "http://127.0.0.1:9/given");
 });
 
 test("a second 402 that differs from the checked one gets nothing signed", async () => {

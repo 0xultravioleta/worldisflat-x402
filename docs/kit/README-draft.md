@@ -1,3 +1,5 @@
+> **Outdated.** Drafted on 29 Oct 2026, before Flat Fee was built: its name (Ask & Hire), its flow (AI verification, payout, reputation) and its placeholders are not the product. The repo's README is [README.md](../../README.md); the texts for the form: [SUBMISSION.md](../../SUBMISSION.md).
+
 # Ask & Hire on Robinhood Chain
 
 > Pay-per-call AI agents and hire-a-human tasks priced in USDG on Robinhood Chain, settled over x402 by an open-source facilitator.

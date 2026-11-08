@@ -69,7 +69,7 @@ let claimedTask = "";
 
 function start(env: Record<string, string>, deps: { chain: Chain; store: Store; localFork?: boolean; emHire?: EmHire }) {
   // the same wiring as src/index.ts: the API first, then the static page
-  const app = createApp({ cfg: loadConfig(env), log: () => {}, ...deps });
+  const app = createApp({ cfg: loadConfig({ RPC_URL: "http://127.0.0.1:9", ...env }), log: () => {}, ...deps });
   app.use("/*", serveStatic({ root: "./public" }));
   const port = nextPort++;
   servers.push(serve({ fetch: app.fetch, port }));

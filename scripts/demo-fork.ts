@@ -1,10 +1,11 @@
-// `npm run demo`: the whole product on http://localhost:3000 with no funds and no setup, on a local anvil fork of
-// Robinhood Chain mainnet (real USDG and $WIF bytecode, facilitator double). It pays one question and one hire task
+// `npm run demo`: the whole product on http://localhost:3000 with no funds and one setting (RPC_URL), on a local anvil fork of
+// Robinhood Chain mainnet (real USDG and $WIF bytecode, facilitator double), forked through RPC_URL: a mainnet RPC
+// (the team's private one in .env, or your own), never a public default. It pays one question and one hire task
 // through the real flow so the ledger and the board have something to show, then stays up until Ctrl-C.
 // Transaction links point at the real explorer and will not resolve: these transactions only exist on the fork.
 // Only throwaway wallets sign here: the fork keeps chain id 4663, so a signature made on it is a valid mainnet
 // authorization for as long as it lives. Never point a real wallet at the demo.
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -17,12 +18,17 @@ import { CHAINS, loadConfig } from "../src/config.js";
 import { createFacilitatorDouble } from "../src/double/facilitator.js";
 import { Store } from "../src/store.js";
 import { fundFromHolder, setEth, startFork } from "./lib/anvil.js";
+import { exitRedacted, rpcOrExit } from "./lib/env.js";
 
 const chainInfo = CHAINS.robinhood;
 const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"; // holds USDG and $WIF on mainnet; impersonated on the fork only
 const port = Number(process.env.PORT ?? 3000);
 
-const fork = await startFork(chainInfo.rpcUrl, chainInfo.chainId, port + 2);
+if (existsSync(".env")) process.loadEnvFile(".env");
+const source = rpcOrExit("robinhood", process.env, "npm run demo forks Robinhood Chain mainnet: set RPC_URL to a mainnet RPC (see README, Try it).");
+// the fork reads through RPC_URL, which can carry an API key: an error nobody caught is printed without it
+exitRedacted([source]);
+const fork = await startFork(source, chainInfo.chainId, port + 2);
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-demo-"));
 const merchant = Wallet.createRandom();
 const guest = Wallet.createRandom();
@@ -66,7 +72,7 @@ const client = new X402Client({ defaultChain: "robinhood", rpcOverrides: { robin
 await client.connectWithPrivateKey(guest.privateKey, "robinhood");
 const json = { "content-type": "application/json" };
 const ask = await client.fetch(`${base}/api/ask`, { method: "POST", maxAmount: "0.10", init: { headers: json, body: JSON.stringify({ question: "What is the latest block and gas on the chain?" }) } });
-const hire = await client.fetch(`${base}/api/hire`, { method: "POST", maxAmount: "0.50", init: { headers: json, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and send a photo of the menu." }) } });
+const hire = await client.fetch(`${base}/api/hire`, { method: "POST", maxAmount: "0.50", init: { headers: json, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and reply in text with today's hours." }) } });
 if (ask.status !== 200 || hire.status !== 201) {
   console.error(`the demo's own payments did not go through: ask ${ask.status} ${(await ask.text()).slice(0, 200)}, hire ${hire.status} ${(await hire.text()).slice(0, 200)}`);
   stop(1);

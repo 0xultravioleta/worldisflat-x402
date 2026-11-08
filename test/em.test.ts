@@ -548,6 +548,7 @@ beforeEach(() => {
 
 function baseEnv(dir: string, env: Record<string, string>) {
   return {
+    RPC_URL: "http://127.0.0.1:9",
     PAY_TO: payTo,
     FACILITATOR_URL: facUrl,
     DATA_DIR: dir,

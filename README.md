@@ -125,34 +125,39 @@ networks it can relay ratings on; it does not today, and Execution Market refuse
 
 ## Try it (judges: under 5 minutes, no wallet, no funds)
 
-You need Node 22+ and [Foundry](https://book.getfoundry.sh) (`anvil`) for the fork runs.
+You need Node 22+, [Foundry](https://book.getfoundry.sh) (`anvil`) for the fork runs, and an RPC of Robinhood Chain in
+`RPC_URL`: Flat Fee has no default RPC and refuses to start without one. Use your own; if you have none, Robinhood Chain
+documents public ones (`https://rpc.mainnet.chain.robinhood.com`, `https://rpc.testnet.chain.robinhood.com`). The live
+demo runs on a private one.
 
 1. `git clone https://github.com/0xultravioleta/worldisflat-x402 && cd worldisflat-x402 && npm install`
-2. **`npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet with the real
+2. **`NETWORK=robinhood RPC_URL=<a mainnet RPC> npm run demo`** and open http://localhost:3000. It runs on a local fork of Robinhood Chain mainnet, made through that RPC, with the real
    USDG and $WIF contracts, and has already paid for one question and one hire task from a throwaway wallet. You see
    both rows under **Paid calls**, each with its settlement and its $WIF cashback, and the task under **Task board**
    (both open on their own on the fork). Enter any address and the worker token `demo`, click **Claim**, type an answer
    and click **Complete**: the task turns `done` and the worker receives 50 $WIF. The **Pay …** buttons are off on the
    demo (see Safety). (The tx links point at the real explorer and do not resolve there:
    those transactions only exist on the fork.)
-3. **`npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
+3. **`NETWORK=robinhood RPC_URL=<a mainnet RPC> npm run e2e:fork`**: the whole flow as assertions, 22 checks on a fork of mainnet. You see `PASS` for: the 402
    terms, unpaid rejection of bad input, a paid question through the SDK, USDG moving payer → merchant, the settlement
    mined, the $WIF cashback, the landing page's own payment code, a replayed payment refused, three concurrent copies of one payment charged
    once, the holder price, a
    non-holder refused at the holder price, hire → claim → complete with the worker's $WIF, and the facilitator double
    refusing a wrong amount, recipient, asset, network, an expired authorization and a bad signature.
-   `npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (18 checks, no $WIF there).
-4. **`npm run verify:testnet`**: against the **real** facilitator on Robinhood Chain Testnet, read-only: the payer is a
-   fresh throwaway wallet with no funds, so nothing can settle. Four `PASS` lines: our EIP-712 domain equals USDG's
-   on-chain `DOMAIN_SEPARATOR()` on both chains, the facilitator takes a signed payment all the way to the balance
-   check (`insufficient_funds`), and refuses an expired one (`invalid_timing`).
+   `NETWORK=robinhood-testnet RPC_URL=<a testnet RPC> npm run e2e:fork -- robinhood-testnet` runs it on a testnet fork (18 checks, no $WIF there).
+4. **`NETWORK=robinhood-testnet RPC_URL=<a testnet RPC> npm run verify:testnet`**: against the **real** facilitator on
+   Robinhood Chain Testnet, read-only: the payer is a fresh throwaway wallet with no funds, so nothing can settle. Three
+   `PASS` lines: our EIP-712 domain equals USDG's on-chain `DOMAIN_SEPARATOR()` on testnet (mainnet's is proven by the
+   fork run, where USDG accepts the signature, and by the mainnet runs below), the facilitator takes a signed payment
+   all the way to the balance check (`insufficient_funds`), and refuses an expired one (`invalid_timing`).
 5. **`npm test`**: unit tests, no network (CI runs them on every push). They include charge-before-serve and replay
    (`test/settle.test.ts`), the $WIF budget, the mainnet run's approvals, every entry point started with a
    malformed key (`test/keys.test.ts`), hiring through Execution Market against a double of its API: publish,
    escrow, delivery, approval, rejection and timeouts (`test/em.test.ts`), and this README's and SUBMISSION.md's
-   evidence of the first hire on mainnet against the run's own output (`test/docs.test.ts`).
+   evidence of the first hire on mainnet against the run's own output, and each text SUBMISSION.md gives for the
+   submission form within its field's cap (`test/docs.test.ts`).
 
-On a real network: `cp .env.example .env`, set `PAY_TO`, `npm start`, then
+On a real network: `cp .env.example .env`, set `PAY_TO` and `RPC_URL`, `npm start`, then
 `curl -i -X POST localhost:3000/api/ask -H 'content-type: application/json' -d '{"question":"latest block?"}'` → you see
 `402 Payment Required` and the USDG terms. With a funded `PAYER_PRIVATE_KEY`, `npm run buy -- "your question"` pays and
 prints the answer with the settlement link (on mainnet: `CONFIRM_MAINNET_SPEND=0.10`, with `PAY_TO` set to the expected
@@ -236,7 +241,7 @@ time, the task and the wallets. What the run checks, and what it refuses before 
 ## What existed before, and what was built during the hackathon
 
 Pre-existing, used only through public interfaces: Robinhood Chain, USDG, $WIF, Uniswap v4 (where $WIF trades),
-[Execution Market](https://github.com/UltravioletaDAO/execution-market) (its REST API),
+[Execution Market](https://execution.market) (its REST API),
 Ultravioleta's Rust x402 facilitator ([x402-rs](https://github.com/UltravioletaDAO/x402-rs), Robinhood Chain + USDG
 support since July 2026, see its `docs/ROBINHOOD_CHAIN.md`), and the
 [uvd-x402-sdk](https://github.com/UltravioletaDAO/uvd-x402-sdk-typescript) npm package.
@@ -300,13 +305,20 @@ demo since 7 Nov 2026, with `npm run em:register` and `npm run e2e:hire`).
   as $WIF, and `DATA_DIR` must persist while hires are open: a task in flight lives there, and the Lightsail recipe,
   which the live demo runs on, loses it on every restart (a lost one is still paid by Execution Market's own release,
   without the $WIF).
+- Through Execution Market, Flat Fee approves a delivery on its own, without a person reading it: any text answer of at
+  most 2000 bytes (`MAX_ANSWER_BYTES` in `src/emhire.ts`) from the worker it assigned, who is never the buyer. A buyer
+  with a second wallet that takes the task could therefore trade USDG for $WIF: at the holder price one such hire costs
+  0.25 USDG, locks 0.20 USDG in escrow for that wallet, which receives it less Execution Market's fee, and sends out
+  60 $WIF (the 10 of the cashback and the 50 of the reward). What caps it is `WIF_DAILY_BUDGET` (500 $WIF a UTC day for cashback and
+  rewards together, refilled by a fresh `DATA_DIR`, see above) and what the merchant wallet holds.
 - A corrupt `state.json` stops the server instead of being overwritten; `npm run reset` clears it.
 - If the RPC cannot be read when a payment arrives, the payer is charged the standard price, never less: a holder in that
   moment gets a 402 at the standard price and can pay it or retry.
 
 ## Configuration
 
-See `.env.example`. The main settings: `NETWORK` (`robinhood-testnet` or `robinhood`), `PAY_TO`, the four prices,
+See `.env.example`. The main settings: `NETWORK` (`robinhood-testnet` or `robinhood`), `RPC_URL` (required: the RPC of
+that network, with no default; a script for the other network refuses rather than use a public one), `PAY_TO`, the four prices,
 `WIF_HOLDER_MIN`, `WIF_CASHBACK`, `WIF_WORKER_REWARD`, `WIF_DAILY_BUDGET`, `MERCHANT_PRIVATE_KEY`, `WORKER_TOKEN`,
 `FACILITATOR_URL`, and for hiring through Execution Market `EM_HIRE`, `EM_API_URL`, `EM_BOUNTY_USDG`, the three escrow
 contracts (`EM_ESCROW_ADDRESS`, `EM_OPERATOR_ADDRESS`, `EM_TOKEN_COLLECTOR_ADDRESS`) and the rest in
@@ -319,7 +331,7 @@ and the day's $WIF budget before a recording.
 Lightsail Containers in us-east-2 (nano, 7 USD a month): push the image with
 `aws lightsail push-container-image --region us-east-2 --service-name flatfee --label web --image flatfee`, set the
 pushed image name and the values in `deploy/aws/terraform.tfvars` (from the `.example`; `worker_token` is required, at
-least 16 characters), then `terraform apply`. `terraform destroy` turns it off. See Safety for where the merchant key
+least 16 characters, and so is `rpc_url`, the private RPC), then `terraform apply`. `terraform destroy` turns it off. See Safety for where the merchant key
 ends up. The custom domain (`flatfee.ultravioletadao.xyz`) and its certificate are attached outside terraform, which
 leaves them alone (`ignore_changes`). Every apply that changes the container's environment redeploys it, and the new
 container starts with an empty `DATA_DIR`.

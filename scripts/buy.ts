@@ -3,13 +3,16 @@
 import { existsSync } from "node:fs";
 import { Wallet } from "ethers";
 import { buy } from "./lib/buyer.js";
-import { configOrExit, keyOrExit } from "./lib/env.js";
+import { safeMessage } from "../src/app.js";
+import { configOrExit, exitRedacted, keyOrExit } from "./lib/env.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const args = process.argv.slice(2);
 const hire = args[0] === "--hire";
 const text = (hire ? args.slice(1) : args).join(" ").trim() || "What is the latest block and gas on the chain?";
 const cfg = configOrExit();
+// the SDK connects the wallet through RPC_URL, which can carry an API key: no error shows it
+exitRedacted([cfg.rpcUrl]);
 const key = keyOrExit("PAYER_PRIVATE_KEY");
 const payer = new Wallet(key).address;
 const base = process.env.FLATFEE_URL?.replace(/\/+$/, "") ?? `http://localhost:${cfg.port}`;
@@ -26,11 +29,12 @@ try {
     maxAmount: process.env.MAX_USDG?.trim() || "1.00",
     confirmMainnet: process.env.CONFIRM_MAINNET_SPEND ?? null,
     expectPayTo: process.env.CONFIRM_MAINNET_PAY_TO?.trim() || process.env.PAY_TO?.trim() || null,
+    rpcUrl: cfg.rpcUrl,
   });
   console.log(`paid ${r.price} USDG -> HTTP ${r.status}`);
   console.log(JSON.stringify(r.body, null, 2));
   process.exit(r.status < 300 ? 0 : 1);
 } catch (e) {
-  console.error((e as Error).message);
+  console.error(safeMessage(e, [cfg.rpcUrl]));
   process.exit(1);
 }

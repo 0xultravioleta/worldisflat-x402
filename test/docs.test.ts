@@ -358,12 +358,24 @@ test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] 
   const X = "[@0xultravioleta](https://x.com/0xultravioleta)";
   assert.ok(section(README, "## Team").includes(`Saúl (${X}) and c0der.`), `README's team links ${X}`);
   assert.ok(section(KIT_README, "## Team").includes(`Saúl (${X}) and c0der.`), `the kit's README draft links ${X}`);
-  // the lines pasted in the form: nothing after the lead's handle (no full name, no wallet), and c0der by its name
+  // SUBMISSION's team section, whole: its note, then the block pasted in the form line for line (the lead's handle and
+  // nothing after it, c0der by its name), and no address anywhere in it: no full name, no prize wallet
   const team = section(SUBMISSION, "## 1. Your team");
-  assert.match(team, /^Lead: Saúl \(@0xultravioleta\)$/m);
-  assert.match(team, /^Members: add c0der only if Saúl decides\. /m);
+  const NOTE = "The lead's full name and the prize wallet are typed in the form by Saúl, never written here: this file is public.";
+  const LINES = [
+    "Team: Ultravioleta DAO",
+    "Lead: Saúl (@0xultravioleta)",
+    "Members: add c0der only if Saúl decides. Up to 4 people; each person can be on one team only.",
+  ].join("\n");
+  assert.doesNotMatch(team, /0x[0-9a-fA-F]{40}/, "SUBMISSION's team section: an address");
+  const pasted = /^```text\n([\s\S]*?)\n```$/m.exec(team);
+  assert.ok(pasted, "SUBMISSION's team section has its block");
+  assert.equal(pasted[1], LINES, "SUBMISSION's team block, line for line");
+  assert.ok(team.split("\n").includes(NOTE), `SUBMISSION's team section says: ${NOTE}`);
+  assert.equal(team.trim(), `${NOTE}\n\n\`\`\`text\n${LINES}\n\`\`\``, "SUBMISSION's team section: the note and the block, nothing else");
   assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\) · c0der \(engineering; /m);
-  const PERSON = /\[(?:SAUL|C0DER)_\w*\]/gi;
+  // a person's placeholder: Saúl's, with the accent or without it, or c0der's (with a zero or an O)
+  const PERSON = /\[(?:SA[UÚ]L|C[0O]DER)_\w*\]/gi;
   for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION]]) {
     assert.deepEqual(doc.match(PERSON), null, `${name}: no [SAUL_…] or [C0DER_…] placeholder`);
   }
@@ -375,14 +387,22 @@ test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] 
     assert.deepEqual([...new Set(doc.match(PERSON) ?? [])].sort(), want, `docs/kit/${f}: its [SAUL_…] and [C0DER_…] placeholders`);
   }
   assert.ok(section(KIT_FORM, "### Form fields").includes("demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]."), "the kit keeps the wallet placeholder");
-  // and both the form's fields and the click list say so, in the same words; the click list no longer has them replaced
+  // form-fields.md's Rule bullet sends those two to the form
+  const rule = KIT_FORM.split("\n").filter((l) => l.startsWith("- **Rule:**"));
+  assert.equal(rule.length, 1, "form-fields.md has one Rule bullet");
+  assert.ok(rule[0].includes("Replace every `[PLACEHOLDER]` first (the full name and the wallet in the form only, see *Team*)."), `form-fields.md's Rule: ${rule[0]}`);
+  // and both the form's fields and the click list say so, in the same words
   const FORM_ONLY = "are filled in the form, by Saúl, and never in this repo: it is public.";
   for (const [name, doc] of [["form-fields.md", KIT_FORM], ["00-CLICKS.md", KIT_CLICKS]]) {
     const says = doc.split("\n").filter((l) => l.includes(FORM_ONLY));
     assert.equal(says.length, 1, `${name} says once: ${FORM_ONLY}`);
     for (const p of ["`[SAUL_FULL_NAME]`", "`[SAUL_WALLET_PUBLIC_ADDRESS]`"]) assert.ok(says[0].includes(p), `${name}: ${p} ${FORM_ONLY}`);
   }
-  const replace = /Search form-fields\.md for `\[` and replace: ([^\n]*?)\. /.exec(section(KIT_CLICKS, "## Fill these placeholders first (only Saúl has them)"));
-  assert.ok(replace, "the click list says what to replace");
-  assert.doesNotMatch(replace[1], /name|wallet|personal|address/i, `the click list replaces no name or wallet: ${replace[1]}`);
+  // the click list's whole section, that sentence aside, has no name, wallet, email or handle left to replace
+  const CLICKS_FORM_ONLY = "`[SAUL_FULL_NAME]` and `[SAUL_WALLET_PUBLIC_ADDRESS]` " + FORM_ONLY;
+  const fill = section(KIT_CLICKS, "## Fill these placeholders first (only Saúl has them)");
+  assert.equal(fill.split(CLICKS_FORM_ONLY).length, 2, `the click list says once: ${CLICKS_FORM_ONLY}`);
+  const rest = fill.replace(CLICKS_FORM_ONLY, "");
+  assert.match(rest, /^Search form-fields\.md for `\[` and replace: /m, "the click list says what to replace");
+  assert.doesNotMatch(rest, /name|wallet|e-?mail|handle|personal|address/i, `the click list replaces no name, wallet, email or handle: ${rest}`);
 });

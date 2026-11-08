@@ -1,3 +1,5 @@
+> **Outdated.** Drafted on 29 Oct 2026, before Flat Fee was built: its name (Ask & Hire), its flow (AI check, payout, reputation) and its placeholders are not the product, and the form takes no deck. What Flat Fee is and does: [README.md](../../README.md); the texts for the form: [SUBMISSION.md](../../SUBMISSION.md).
+
 # Deck outline + speaker notes: Ask & Hire on Robinhood Chain (World Is Flat (Robinhood Chain))
 
 10 slides, 16:9. Export to PDF for upload. Visual style: dark violet (#2B0A3D) background, white text, one accent colour, a screenshot on every slide after 3.

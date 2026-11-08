@@ -31,6 +31,7 @@ const deadline = Math.floor(Date.now() / 1000) + 86400;
 const config = (env: Record<string, string> = {}) => {
   const c = loadConfig({
     NETWORK: "robinhood",
+    RPC_URL: "http://127.0.0.1:9",
     PAY_TO: merchant.address,
     MERCHANT_PRIVATE_KEY: merchant.privateKey,
     EM_HIRE: "on",

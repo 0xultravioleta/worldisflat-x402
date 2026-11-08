@@ -90,6 +90,7 @@ function serveApp(port: number, deps: Partial<AppDeps> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "flatfee-settle-"));
   dirs.push(dir);
   const cfg = loadConfig({
+    RPC_URL: "http://127.0.0.1:9",
     PAY_TO: payTo,
     FACILITATOR_URL: facUrl,
     DATA_DIR: dir,

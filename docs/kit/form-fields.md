@@ -1,69 +1,47 @@
-# Form fields: World Is Flat (Robinhood Chain)
+# Form fields: World Is Flat (worldisflat.fun)
 
-- **Submit at:** https://worldisflat.fun/build
-- **Deadline:** Sat Oct 31, 2026 (time not published; finish by 9:00 AM EDT)
-- **Brief:** briefs/04-world-is-flat.md (PENDING c0der capacity)
-- **Rule:** copy each block as-is. Replace every `[PLACEHOLDER]` first (the full name and the wallet in the form only, see *Team*). Grok Bot did NOT register, save or submit anything.
+- **Submit at:** https://worldisflat.fun/build → sign in → edit submission. Edits close Thu 12 Nov 2026, 17:30 UTC.
+- **Texts to paste:** [SUBMISSION.md, *Form fields*](../../SUBMISSION.md#form-fields-worldisflatfun-edit-submission),
+  one block per field of the table below, in the same order and within the same caps (`test/docs.test.ts` checks
+  both). This file only maps the form: its one block is the team line, with the placeholders only Saúl fills in.
+- **Rule:** copy each block as-is. Replace every `[PLACEHOLDER]` first (the full name and the wallet in the form only, see *Team*). Nobody but Saúl registers, saves or submits anything.
 
-Source: worldisflat.fun/build; no public field list.
+Source: the form's own script, https://worldisflat.fun/build/assets/js/form.js?v=0d65455f4eb5 (read on 8 Nov 2026).
+A cap is the field's `maxlength`; a list is split at spaces and commas, one item per line.
 
-### Project name · 29 chars
-```text
-Ask & Hire on Robinhood Chain
-```
-### Tagline / short description · 129 chars ✅
-```text
-Pay-per-call AI agents and hire-a-human tasks priced in USDG on Robinhood Chain, settled over x402 by an open-source facilitator.
-```
-### Description · 465 chars ✅
-```text
-An HTTP endpoint answers 402 Payment Required with a USDG price. Any wallet or agent pays with a signed authorization, our facilitator verifies and settles on Robinhood Chain, and the endpoint returns the answer, or opens an Execution Market task for a human. Ultravioleta's Rust x402 facilitator already supports Robinhood Chain mainnet and testnet with USDG (docs/ROBINHOOD_CHAIN.md). The demo is a small TypeScript server using the x402 SDK, plus a landing page.
-```
-### Full story (if a long field exists) · 1207 chars
-```markdown
-## Inspiration
-Robinhood Chain brings stablecoins to a mainstream retail audience. We wanted the simplest useful thing an agent can sell there: an answer, or a person who goes and checks something, for a few cents of USDG.
-
-## What it does
-An HTTP endpoint answers 402 Payment Required with a USDG price. Any wallet or agent pays with a signed authorization, our facilitator verifies and settles on Robinhood Chain, and the endpoint returns the answer, or opens an Execution Market task for a human.
-
-## How we built it
-Ultravioleta's Rust x402 facilitator already supports Robinhood Chain mainnet and testnet with USDG (docs/ROBINHOOD_CHAIN.md). The demo is a small TypeScript server using the x402 SDK, plus a landing page.
-
-## Challenges we ran into
-Keeping the demo small enough to ship in a day while still settling real mainnet USDG.
-
-## Accomplishments that we're proud of
-A live mainnet USDG settlement on Robinhood Chain through an open-source facilitator, with no custom chain code needed.
-
-## What we learned
-x402 makes any API a Robinhood Chain storefront in a few lines.
-
-## What's next for Ask & Hire on Robinhood Chain
-Add Execution Market human tasks priced in USDG, and agent subscriptions.
-```
-### Tech / tags
-```text
-robinhood-chain, usdg, x402, rust, typescript, evm
-```
-### Links
-```text
-Repo: https://github.com/0xultravioleta/worldisflat-x402
-Demo: [DEMO_URL]
-Settlement tx: [EXPLORER_TX_URL]
-Video: [VIDEO_URL]
-```
 ### Team
-`[SAUL_FULL_NAME]` here and `[SAUL_WALLET_PUBLIC_ADDRESS]` in *Form fields* below are filled in the form, by Saúl, and never in this repo: it is public.
+`[SAUL_FULL_NAME]` here and `[SAUL_WALLET_PUBLIC_ADDRESS]` in the table below are filled in the form, by Saúl, and never in this repo: it is public.
 ```text
 Team (placeholders): Saúl ([SAUL_FULL_NAME], @0xultravioleta, lead and submitter) · c0der (engineering; add as teammate only if Saúl decides) · Built with help from AI coding agents.
 ```
-### Form fields
-```text
-worldisflat.fun/build did not expose a public field list to our fetcher. Paste from this kit: name, pitch, description, repo, demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]. If the form is token-gated, stop and tell Saúl.
-```
 
-## Track selection
-```text
-Single pool
-```
+### The form's fields, in its order
+
+| step | field | key | kind | cap | what goes in |
+|---|---|---|---|---|---|
+| your team | team name | `team_name` | text | 60 | as on 2 Nov |
+| your team | email | `email` | email | 254 | the lead's own, only the organisers see it |
+| your team | github profile of the lead | `github_profile` | text | 100 | the lead's own |
+| your team | telegram or discord handle | `contact_handle` | text | 60 | the lead's own (optional) |
+| your team | payout wallet | `payout_address` | text | 42 | `[SAUL_WALLET_PUBLIC_ADDRESS]` |
+| your project | project name | `name` | text | 60 | SUBMISSION.md |
+| your project | one liner | `one_liner` | text | 80 | SUBMISSION.md |
+| your project | category | `category_slugs` | categories | - | SUBMISSION.md (a choice) |
+| your project | what it does | `what_it_does` | area | 1500 | SUBMISSION.md |
+| your project | who it's for | `who_its_for` | area | 500 | SUBMISSION.md |
+| how it connects to $wif | how does it use $wif | `wif_usage` | area | 1000 | SUBMISSION.md |
+| how it connects to $wif | integration type | `integration_types` | multi | - | SUBMISSION.md (a choice) |
+| how it connects to $wif | contract addresses | `contract_addresses` | list | - | empty (optional) |
+| how it connects to $wif | we're ok with wif linking, featuring or integrating this project | `ok_to_feature` | check | - | ticked |
+| your flywheel | what does someone do | `flywheel_action` | area | 500 | SUBMISSION.md |
+| your flywheel | what happens to $wif when they do it | `flywheel_wif` | area | 500 | SUBMISSION.md |
+| your flywheel | why does that bring them, or others, back | `flywheel_return` | area | 500 | SUBMISSION.md |
+| proof of build | github repo | `repo_url` | url | 300 | SUBMISSION.md |
+| proof of build | demo video | `demo_video_url` | url | 300 | SUBMISSION.md |
+| proof of build | live link | `live_url` | url | 300 | SUBMISSION.md |
+| proof of build | transactions | `tx_hashes` | list | - | SUBMISSION.md: hashes only, one per line |
+| proof of build | how it's made | `how_its_made` | area | 1500 | SUBMISSION.md |
+| proof of build | what's next | `whats_next` | area | 500 | SUBMISSION.md (optional) |
+
+The project logo is a slot after *project name*, already uploaded (`docs/video/logo.png`). The last step, *review*,
+shows every answer and the terms.

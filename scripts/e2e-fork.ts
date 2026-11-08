@@ -1,10 +1,10 @@
-// `npm run e2e:fork`: the whole flow against a local anvil fork of Robinhood Chain, with nothing to configure and no
-// real funds. Real USDG and $WIF bytecode, the real EIP-3009 settlement, the SDK on both sides; only the facilitator
+// `npm run e2e:fork`: the whole flow against a local anvil fork of Robinhood Chain, forked through RPC_URL (an RPC of
+// that network: the team's private one in .env, or your own; never a public default), with no real funds. Real USDG and $WIF bytecode, the real EIP-3009 settlement, the SDK on both sides; only the facilitator
 // is a double (src/double/facilitator.ts) because the real one cannot see a local fork.
 //
 //   npm run e2e:fork                       # fork of mainnet (USDG + $WIF)
 //   npm run e2e:fork -- robinhood-testnet  # fork of testnet (USDG only)
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { serve } from "@hono/node-server";
@@ -16,6 +16,7 @@ import { CHAINS, USDG_DECIMALS, WIF_DECIMALS, formatUnits, loadConfig, type Netw
 import { createFacilitatorDouble } from "../src/double/facilitator.js";
 import { Store } from "../src/store.js";
 import { balance, fundFromHolder, setEth, startFork } from "./lib/anvil.js";
+import { rpcOrExit } from "./lib/env.js";
 
 // holders the fork borrows from (impersonated on the fork only): the Uniswap v4 PoolManager on mainnet, a large
 // testnet USDG holder on testnet
@@ -36,7 +37,9 @@ function check(step: string, ok: boolean, detail: string) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${step}: ${detail}`);
 }
 
-const fork = await startFork(chainInfo.rpcUrl, chainInfo.chainId, port(1));
+if (existsSync(".env")) process.loadEnvFile(".env");
+const source = rpcOrExit(network, process.env, `npm run e2e:fork forks ${chainInfo.label}: set RPC_URL to an RPC of it (see README, Try it).`);
+const fork = await startFork(source, chainInfo.chainId, port(1));
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-e2e-"));
 const servers: { close: () => void }[] = [];
 try {
@@ -159,7 +162,7 @@ try {
   const hire = await client.fetch(`${base}/api/hire`, {
     method: "POST",
     maxAmount: "0.50",
-    init: { headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and send a photo" }) },
+    init: { headers: { "content-type": "application/json" }, body: JSON.stringify({ request: "Check that the cafe on 5th street is open and reply in text with today's hours." }) },
   });
   const hired = (await hire.json()) as { task?: { id: string } };
   if (hire.status !== 201) console.log("hire answered", hire.status, JSON.stringify(hired).slice(0, 400));
@@ -168,7 +171,7 @@ try {
   const wh = { "content-type": "application/json", "x-worker-token": "e2e-worker" };
   const claim = await fetch(`${base}/api/tasks/${id}/claim`, { method: "POST", headers: wh, body: JSON.stringify({ worker: worker.address }) });
   const wifBefore = await wif(worker.address);
-  const done = await fetch(`${base}/api/tasks/${id}/complete`, { method: "POST", headers: wh, body: JSON.stringify({ worker: worker.address, answer: "Open until 9pm, photo at ipfs://demo" }) });
+  const done = await fetch(`${base}/api/tasks/${id}/complete`, { method: "POST", headers: wh, body: JSON.stringify({ worker: worker.address, answer: "Open until 9pm today." }) });
   const task = (await done.json()) as { status?: string; rewardTx?: string; rewardError?: string };
   const reward = (await wif(worker.address)) - wifBefore;
   check("worker claimed and completed", claim.status === 200 && task.status === "done", `claim ${claim.status}, task ${task.status}`);

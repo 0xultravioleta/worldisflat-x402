@@ -8,7 +8,11 @@ export interface ChainInfo {
   label: string;
   chainId: number;
   caip2: string;
-  rpcUrl: string;
+  /**
+   * The RPC Robinhood Chain documents publicly. Only a fact for a wallet's "add network" (GET /api/info): Flat Fee never
+   * connects through it, and RPC_URL has no default (rpcUrlFor).
+   */
+  publicRpcUrl: string;
   explorer: string;
   usdg: string;
   /** $WIF only exists on mainnet; on testnet it is optional (WIF_ADDRESS) */
@@ -22,7 +26,7 @@ export const CHAINS: Record<NetworkName, ChainInfo> = {
     label: "Robinhood Chain",
     chainId: 4663,
     caip2: "eip155:4663",
-    rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
+    publicRpcUrl: "https://rpc.mainnet.chain.robinhood.com",
     explorer: "https://robinhoodchain.blockscout.com",
     usdg: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
     wif: "0x5173b8ea6923c2d40267890d45c46a3480954773",
@@ -32,7 +36,7 @@ export const CHAINS: Record<NetworkName, ChainInfo> = {
     label: "Robinhood Chain Testnet",
     chainId: 46630,
     caip2: "eip155:46630",
-    rpcUrl: "https://rpc.testnet.chain.robinhood.com",
+    publicRpcUrl: "https://rpc.testnet.chain.robinhood.com",
     explorer: "https://explorer.testnet.chain.robinhood.com",
     usdg: "0x7E955252E15c84f5768B83c41a71F9eba181802F",
     wif: null,
@@ -100,6 +104,21 @@ type Env = Record<string, string | undefined>;
 function str(env: Env, key: string): string | null {
   const v = env[key]?.trim();
   return v ? v : null;
+}
+
+/**
+ * The RPC a run on `network` reads and sends through: RPC_URL, always given (the owner's private one in production),
+ * never a public default. It belongs to the network NETWORK names, so a run on another network is refused instead of
+ * reading that chain through this one's RPC. The value is never shown.
+ */
+export function rpcUrlFor(env: Env, network: NetworkName): string {
+  const url = str(env, "RPC_URL");
+  if (!url) throw new ConfigError(`RPC_URL is required: the ${CHAINS[network].label} RPC to use (there is no default, and no public RPC is used)`);
+  const named = str(env, "NETWORK")?.toLowerCase();
+  if (named && named !== network) {
+    throw new ConfigError(`RPC_URL is set for NETWORK=${named}, and this run is on ${network}: set NETWORK=${network} and that network's RPC_URL`);
+  }
+  return url;
 }
 
 function address(env: Env, key: string, fallback: string | null = null): string | null {
@@ -282,7 +301,7 @@ export function loadConfig(env: Env = process.env): Config {
 
   return {
     chain,
-    rpcUrl: str(env, "RPC_URL") ?? chain.rpcUrl,
+    rpcUrl: rpcUrlFor(env, chain.name),
     facilitatorUrl: (str(env, "FACILITATOR_URL") ?? DEFAULT_FACILITATOR_URL).replace(/\/+$/, ""),
     payTo,
     prices,

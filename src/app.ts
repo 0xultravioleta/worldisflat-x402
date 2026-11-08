@@ -316,7 +316,7 @@ export function createApp({
       name: "Flat Fee",
       localFork,
       // the public RPC for the wallet's "add network", never RPC_URL (that one may be private or a local fork)
-      network: { name: cfg.chain.name, label: cfg.chain.label, caip2: cfg.chain.caip2, chainId: cfg.chain.chainId, explorer: cfg.chain.explorer, rpcUrl: cfg.chain.rpcUrl },
+      network: { name: cfg.chain.name, label: cfg.chain.label, caip2: cfg.chain.caip2, chainId: cfg.chain.chainId, explorer: cfg.chain.explorer, rpcUrl: cfg.chain.publicRpcUrl },
       facilitator: cfg.facilitatorUrl,
       payTo: cfg.payTo,
       payToUrl: addressUrl(cfg.chain, cfg.payTo),

@@ -4,15 +4,17 @@
 // it): every transaction hash, the amounts and the direction written next to each one and no other amount, the end
 // balances, the Execution Market task, the wallets and the prices. Also the owner's sentence that the worker is a team
 // test wallet and not a person, the server's own words for a hire nobody takes (hireExpiry, as GET /api/info serves
-// it), the merchant's identity, and the lengths SUBMISSION.md gives for the texts to paste in the form. And the team:
-// the owner's X in both docs and in the kit, no [SAUL_…] or [C0DER_…] placeholder in either doc, and no full name or
-// prize wallet in this public repo (the owner types them in the form). No network.
+// it), the merchant's identity, and the demo's own approval and the cap the code puts on it. The texts SUBMISSION.md
+// gives for the submission form: one per field of the real form, in its order, each within its field's cap, plain text,
+// the transactions as hashes only, and the sentence about the test worker where the run is told; docs/kit maps the same
+// fields. And the team: the owner's X in both docs and in the kit, no [SAUL_…] or [C0DER_…] placeholder in either doc,
+// and no full name or prize wallet in this public repo (the owner types them in the form). No network.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { Wallet, formatUnits } from "ethers";
 import { loadConfig } from "../src/config.js";
-import { hireExpiry } from "../src/emhire.js";
+import { MAX_ANSWER_BYTES, hireExpiry } from "../src/emhire.js";
 
 const README = readFileSync("README.md", "utf8");
 const SUBMISSION = readFileSync("SUBMISSION.md", "utf8");
@@ -33,8 +35,8 @@ function envFile(file: string): Record<string, string> {
   }
   return out;
 }
-// the live demo's settings; the two secrets the container holds are stood in for
-const CFG = loadConfig({ ...envFile("deploy/aws/em-hire.env"), MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey, WORKER_TOKEN: "a-worker-token-of-16+" });
+// the live demo's settings; the three secrets the container holds are stood in for
+const CFG = loadConfig({ ...envFile("deploy/aws/em-hire.env"), MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey, WORKER_TOKEN: "a-worker-token-of-16+", RPC_URL: "https://private-rpc.example/robinhood" });
 assert.ok(CFG.em, "the deploy's settings hire through Execution Market");
 const EM = CFG.em;
 
@@ -96,26 +98,13 @@ const README_WAY: Record<TxKey, string> = {
   payment: "to the worker",
   reward: "merchant → worker",
 };
-const FORM_TX_WAY: Record<TxKey, string> = {
-  settle: "payer to merchant",
-  cashback: "to the payer",
-  escrow: "by the merchant",
-  payment: "released to the test worker",
-  reward: "to the test worker",
-};
-const FORM_ACC_WAY: Record<TxKey, string> = {
-  settle: "the team's payer wallet paid",
-  cashback: "the buyer",
-  escrow: "the merchant locked",
-  payment: "paid the worker",
-  reward: "sent the worker",
-};
 const KEY_OF = new Map(Object.entries(RUN.txs).map(([k, h]) => [h, k as TxKey]));
 /** the 2 Nov paid question (README, "A paid question"): the only other Robinhood Chain transactions the docs cite */
-const EARLIER = new Set([
-  "0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33",
-  "0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640",
-]);
+const EARLIER_TXS = {
+  settle: "0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33",
+  cashback: "0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640",
+};
+const EARLIER = new Set(Object.values(EARLIER_TXS));
 /**
  * The merchant's ERC-8004 identity on Base, which is not in the run's output: Execution Market's public
  * GET /api/v1/reputation/register/wallet/<merchant>?network=base answered agent_id 1170265 on 7 Nov 2026; on Base the
@@ -159,30 +148,77 @@ function section(doc: string, heading: string): string {
   return next < 0 ? rest : rest.slice(0, next);
 }
 
-/** SUBMISSION's edit section: each text to paste, by the label line written above its block */
-const EDIT = section(SUBMISSION, "## Edit before 12 Nov 2026, 17:30 UTC: hiring through Execution Market (ready to paste)");
-function blocks(text: string): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const m of text.matchAll(/(?:^|\n)([^\n]+):\n\n```text\n([\s\S]*?)\n```/g)) {
-    assert.ok(!out.has(m[1]), `two blocks labelled ${m[1]}`);
-    out.set(m[1], m[2]);
-  }
-  return out;
+/** a heading's anchor as GitHub writes it: lower case, punctuation but hyphens dropped, spaces as hyphens */
+const anchor = (heading: string) => heading.replace(/^#+ /, "").toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, "").replace(/ /g, "-");
+
+/**
+ * The submission form's fields, in its order, as its own script defines them
+ * (https://worldisflat.fun/build/assets/js/form.js?v=0d65455f4eb5, read on 8 Nov 2026: SECTIONS, each field's `key`,
+ * `kind` and `max`). The cap is the field's maxlength; a choice or a list has none. The browser splits a list at spaces
+ * and commas (form.js:828, `input.value.split(/[\s,]+/).filter(Boolean)`).
+ */
+const FORM: { step: string; key: string; kind: string; cap: number | null }[] = (
+  [
+    ["your team", "team_name", "text", 60],
+    ["your team", "email", "email", 254],
+    ["your team", "github_profile", "text", 100],
+    ["your team", "contact_handle", "text", 60],
+    ["your team", "payout_address", "text", 42],
+    ["your project", "name", "text", 60],
+    ["your project", "one_liner", "text", 80],
+    ["your project", "category_slugs", "categories", null],
+    ["your project", "what_it_does", "area", 1500],
+    ["your project", "who_its_for", "area", 500],
+    ["how it connects to $wif", "wif_usage", "area", 1000],
+    ["how it connects to $wif", "integration_types", "multi", null],
+    ["how it connects to $wif", "contract_addresses", "list", null],
+    ["how it connects to $wif", "ok_to_feature", "check", null],
+    ["your flywheel", "flywheel_action", "area", 500],
+    ["your flywheel", "flywheel_wif", "area", 500],
+    ["your flywheel", "flywheel_return", "area", 500],
+    ["proof of build", "repo_url", "url", 300],
+    ["proof of build", "demo_video_url", "url", 300],
+    ["proof of build", "live_url", "url", 300],
+    ["proof of build", "tx_hashes", "list", null],
+    ["proof of build", "how_its_made", "area", 1500],
+    ["proof of build", "whats_next", "area", 500],
+  ] as const
+).map(([step, key, kind, cap]) => ({ step, key, kind, cap }));
+/** the fields SUBMISSION.md gives an answer for: every one after the team's (the lead fills those) */
+const PROJECT_FIELDS = FORM.filter((f) => f.step !== "your team");
+const formList = (value: string) => value.split(/[\s,]+/).filter(Boolean);
+
+/** SUBMISSION's section for the form: its intro, then one ### subsection per field (the team's first) */
+const FORM_HEADING = "## Form fields (worldisflat.fun, edit submission)";
+const FORM_SECTION = section(SUBMISSION, FORM_HEADING);
+const [FORM_INTRO, ...SUBSECTIONS] = FORM_SECTION.split(/\n(?=### )/);
+const TEAM = SUBSECTIONS[0];
+interface Answer {
+  label: string;
+  key: string;
+  /** what the heading says after the key: "<n> of <cap> chars", or what kind of choice or list */
+  what: string;
+  /** the text blocks under the heading */
+  blocks: string[];
 }
-const BLOCKS = blocks(EDIT);
-function block(label: string): string {
-  const b = BLOCKS.get(label);
-  assert.ok(b !== undefined, `SUBMISSION.md has no block "${label}"`);
-  return b;
+const ANSWERS: Answer[] = SUBSECTIONS.slice(1).map((s) => {
+  const h = /^### ([^\n·]+) · `(\w+)` · ([^\n]+)\n/.exec(s);
+  assert.ok(h, `SUBMISSION, the form's section: a field's heading is "### <label> · \`<key>\` · <length>": ${s.split("\n")[0]}`);
+  return { label: h[1], key: h[2], what: h[3], blocks: [...s.matchAll(/^```text\n([\s\S]*?)\n```$/gm)].map((m) => m[1]) };
+});
+/** the one text block SUBMISSION gives for a field of the form */
+function answer(key: string): string {
+  const a = ANSWERS.find((x) => x.key === key);
+  assert.ok(a, `SUBMISSION has no answer for the form's ${key}`);
+  assert.equal(a.blocks.length, 1, `SUBMISSION: one block for ${key}`);
+  return a.blocks[0];
 }
 const EM_SECTION = section(README, "## Hiring a human through Execution Market");
 const HIRE = section(README, "### A hire through Execution Market (7 Nov 2026)");
-// the edit section's own paragraph, above its table (the blocks below it carry the sentence too)
-const INTRO = EDIT.slice(0, EDIT.indexOf("\n| field |"));
-const TX_BLOCK = block("*Transactions*, added after the two lines already there");
-const WALLET_BLOCK = block("*Wallets*, added after the two lines already there");
-const ACC_BLOCK = block("Long story, *Accomplishments*, added after the paragraph already there");
-const WHAT_BLOCK = block("Long story, *What it does*");
+const SAFETY = section(README, "## Safety");
+const WHAT_IT_DOES = answer("what_it_does");
+const HOW_ITS_MADE = answer("how_its_made");
+const TX_HASHES = answer("tx_hashes");
 
 /**
  * Every transaction link in `units` is one of the run's; the text between it and the link before it (in the same unit:
@@ -241,15 +277,129 @@ test("README: each row of the hire's table is a transaction of the run, with its
   assert.equal([...HIRE.matchAll(/\[0x[0-9a-f]{4}…[0-9a-f]{4}\]\(/g)].length, 5, "five labelled links");
 });
 
-test("SUBMISSION: the Transactions lines and the Accomplishments paragraph cite the run, each amount by its hash", () => {
-  citesTheRun("SUBMISSION, Transactions", TX_BLOCK.split("\n"), FORM_TX_WAY);
-  citesTheRun("SUBMISSION, Accomplishments", [ACC_BLOCK], FORM_ACC_WAY);
+test("SUBMISSION's answers: every field of the form after the team's, in the form's order, and nothing else", () => {
+  assert.ok(FORM_INTRO.trim().length > 0, "the section opens with what it is");
+  assert.match(TEAM, /^### your team\n/, "the team's step comes first, as in the form");
+  assert.deepEqual(ANSWERS.map((a) => a.key), PROJECT_FIELDS.map((f) => f.key), "one answer per field, in the form's order");
+  // the form's own script, as the section names it
+  assert.ok(FORM_INTRO.includes("https://worldisflat.fun/build/assets/js/form.js?v=0d65455f4eb5"), "the section names the form's script");
+  // and the rest of the file is not a second set of texts to paste
+  assert.equal([...SUBMISSION.matchAll(/^```text$/gm)].length, ANSWERS.reduce((n, a) => n + a.blocks.length, 0), "every block of SUBMISSION.md is a field's answer");
+});
+
+test("SUBMISSION's answers: each text within its field's cap, its length written right, plain text on one line", () => {
+  for (const f of PROJECT_FIELDS) {
+    const a = ANSWERS.find((x) => x.key === f.key)!;
+    if (f.cap === null) continue;
+    const text = answer(f.key);
+    // ASCII only and no line break: a cap counted in UTF-16 units, in code points or in bytes is the same number
+    assert.match(text, /^[\x20-\x7e]+$/, `${f.key}: printable ASCII on one line`);
+    assert.ok(text.length <= f.cap, `${f.key}: ${text.length} chars, above the form's ${f.cap}`);
+    assert.equal(a.what, `${text.length} of ${f.cap} chars`, `${f.key}: the heading gives its length and the form's cap`);
+    // the form shows text as typed: no markdown, links as bare URLs
+    assert.doesNotMatch(text, /\*\*|__|`|\]\(|^[#>*-]|<\/?[a-z]/i, `${f.key}: markdown or HTML`);
+  }
+  // the choices and the optional list say what to do, with nothing to paste
+  for (const f of PROJECT_FIELDS.filter((x) => x.cap === null && x.key !== "tx_hashes")) {
+    const a = ANSWERS.find((x) => x.key === f.key)!;
+    assert.deepEqual(a.blocks, [], `${f.key}: a choice, no block`);
+    assert.match(a.what, /^a (?:choice|tick|list, optional)$/, `${f.key}: what kind of field`);
+  }
+});
+
+test("SUBMISSION's transactions: only hashes, one per line, the Robinhood Chain ones the README cites", () => {
+  const lines = TX_HASHES.split("\n");
+  for (const l of lines) assert.match(l, /^0x[0-9a-fA-F]{64}$/, `tx_hashes: "${l}" is not 0x and 64 hex`);
+  // the form keeps them as written: splitting at spaces and commas gives the same lines
+  assert.deepEqual(formList(TX_HASHES), lines, "tx_hashes: the form's list is the lines");
+  assert.equal(new Set(lines).size, lines.length, "tx_hashes: no hash twice");
+  // the 2 Nov question's, then the hire's, in the README's order; no Base transaction (the identity's)
+  const want = [EARLIER_TXS.settle, EARLIER_TXS.cashback, RUN.txs.settle, RUN.txs.cashback, RUN.txs.escrow, RUN.txs.payment, RUN.txs.reward];
+  assert.deepEqual(lines, want, "tx_hashes: the seven, in order");
+  const readme = new Set([...README.matchAll(TX)].map((m) => m[1]));
+  for (const h of lines) assert.ok(readme.has(h), `tx_hashes: ${h} is a Robinhood Chain transaction the README links to`);
+  // and the line under the block names the ones that move $WIF by their place: the second, the fourth and the last
+  const nth = ["first", "second", "third", "fourth", "fifth", "sixth"];
+  const wifTxs = [EARLIER_TXS.cashback, RUN.txs.cashback, RUN.txs.reward].map((h) => lines.indexOf(h));
+  const where = wifTxs.map((i) => (i === lines.length - 1 ? "the last" : `the ${nth[i]}`));
+  const said = `Three of them move $WIF: ${where.slice(0, -1).join(", ")} and ${where.at(-1)}.`;
+  assert.ok(norm(section(FORM_SECTION, "### transactions · `tx_hashes` · a list, one hash per line")).includes(said), `SUBMISSION says: ${said}`);
+});
+
+test("SUBMISSION's answers: the links are the README's, every amount is the deploy's or the run's", () => {
+  const top = /^Built for .*Demo video: (\S+) · Live demo: (\S+) ·$/m.exec(README);
+  assert.ok(top, "README's links line");
+  assert.equal(answer("demo_video_url"), top[1]);
+  assert.equal(answer("live_url"), top[2]);
+  const repo = /`git clone (\S+) && cd/.exec(README);
+  assert.ok(repo, "README's clone line");
+  assert.equal(answer("repo_url"), repo[1]);
+  for (const k of ["repo_url", "demo_video_url", "live_url"]) assert.match(answer(k), /^https:\/\/\S+$/, k);
+  // each `<n> USDG` and `<n> $WIF` of the answers: a price, the bounty, the worker's pay in the run, the cashback, the
+  // reward, the holder minimum or the day's budget
+  const n = (atomic: bigint, decimals: number) => Number(formatUnits(atomic, decimals));
+  const allowed = new Set([
+    ...[CFG.prices.ask, CFG.prices.askHolder, CFG.prices.hire, CFG.prices.hireHolder, EM.bounty, BigInt(RUN.deltas.workerUsdg)].map((a) => `${n(a, 6)} USDG`),
+    ...[CFG.wif.cashback, CFG.wif.workerReward, CFG.wif.holderMin, CFG.wif.dailyBudget].map((a) => `${n(a, 18)} $WIF`),
+  ]);
+  for (const a of ANSWERS) {
+    for (const b of a.blocks) {
+      for (const x of amounts(b).filter((s) => /(USDG|\$WIF)$/.test(s))) assert.ok(allowed.has(x), `${a.key}: "${x}" is not the deploy's or the run's`);
+    }
+  }
+});
+
+test("SUBMISSION's how it's made: the hire of 7 Nov, its worker as the owner wrote it, and the demo's own approval with its cap", () => {
+  // the sentence goes where the run is told, which is how it's made (or what it does)
+  assert.ok(norm(HOW_ITS_MADE).includes(TEST_WORKER) || norm(WHAT_IT_DOES).includes(TEST_WORKER), `how_its_made or what_it_does says: ${TEST_WORKER}`);
+  // every answer that tells the run says it, and says the buyer was the team's
+  const tellsTheRun = (b: string) =>
+    /\b7 Nov(?:ember)?\b|\bNov(?:ember)?\.? 7\b|\bfirst hire\b|\btest (?:worker|wallet)\b/i.test(b) ||
+    b.includes(RUN.emTaskId) ||
+    Object.values(RUN.txs).some((h) => b.includes(h)) ||
+    has(b, `${usdg(RUN.deltas.workerUsdg)} USDG`);
+  // tx_hashes carries only hashes by design (the form splits it): its sentence is the one in how it's made
+  const tellers = ANSWERS.filter((a) => a.key !== "tx_hashes" && a.blocks.some(tellsTheRun)).map((a) => a.key);
+  assert.ok(tellers.includes("how_its_made"), "how_its_made tells the run");
+  for (const k of tellers) {
+    assert.ok(norm(answer(k)).includes(TEST_WORKER), `${k} tells the run and says: ${TEST_WORKER}`);
+    assert.ok(norm(answer(k)).toLowerCase().includes(TEAM_BUYER), `${k} tells the run and says the buyer is ${TEAM_BUYER}`);
+  }
+  // the run's numbers, each with what it was
+  const d = RUN.deltas;
+  for (const said of [
+    `the team's payer wallet paid ${usdg(-BigInt(d.payerUsdg))} USDG`,
+    `${BOUNTY} USDG went into escrow`,
+    `${usdg(d.workerUsdg)} USDG was released to the worker`,
+    `${wif(d.workerWif)} $WIF to the worker`,
+    `${wif(d.payerWif)} $WIF back to the buyer`,
+    `ERC-8004 agent ${IDENTITY.agent} on Base`,
+  ]) {
+    assert.ok(norm(HOW_ITS_MADE).includes(said), `how_its_made says: ${said}`);
+  }
+  // the demo approves on its own, and the cap is the code's: what it accepts (src/emhire.ts) and the day's $WIF
+  // (WIF_DAILY_BUDGET, enforced in src/wif.ts), in how it's made and in the README's Safety
+  assert.match(readFileSync("src/wif.ts", "utf8"), /cfg\.wif\.dailyBudget\)\) throw new Error\("daily \$WIF budget used up \(WIF_DAILY_BUDGET\)"\)/);
+  const budget = `${wif(CFG.wif.dailyBudget)} $WIF a UTC day`;
+  assert.ok(norm(HOW_ITS_MADE).includes(`the demo approves on its own any text answer of up to ${MAX_ANSWER_BYTES} bytes from the worker it assigned`));
+  assert.ok(norm(HOW_ITS_MADE).includes(`caps all the $WIF it sends at ${budget} (WIF_DAILY_BUDGET, src/wif.ts)`), `how_its_made: ${budget}`);
+  assert.ok(norm(SAFETY).includes(`Flat Fee approves a delivery on its own, without a person reading it: any text answer of at most ${MAX_ANSWER_BYTES} bytes (MAX_ANSWER_BYTES in src/emhire.ts)`));
+  assert.ok(
+    norm(SAFETY).includes(
+      `at the holder price one such hire costs ${twoDecimals(CFG.prices.hireHolder)} USDG, locks ${twoDecimals(EM.bounty)} USDG in escrow for that wallet, ` +
+        `which receives it less Execution Market's fee, and sends out ${wif(CFG.wif.cashback + CFG.wif.workerReward)} $WIF ` +
+        `(the ${wif(CFG.wif.cashback)} of the cashback and the ${wif(CFG.wif.workerReward)} of the reward)`,
+    ),
+    "README's Safety: one such hire, by the deploy's numbers",
+  );
+  assert.ok(norm(SAFETY).includes(`WIF_DAILY_BUDGET (${budget} for cashback and rewards together`), `README's Safety: ${budget}`);
 });
 
 test("every transaction both docs link to is the run's, the 2 Nov question's or the identity's, hash for hash", () => {
   for (const [name, doc] of [["README.md", README], ["SUBMISSION.md", SUBMISSION]]) {
     const links = [...doc.matchAll(TX)].map((m) => m[1]);
-    assert.ok(links.length > 0);
+    // SUBMISSION gives the form hashes (above), and need link none
+    assert.ok(links.length > 0 || doc === SUBMISSION);
     for (const h of links) assert.ok(KEY_OF.has(h) || EARLIER.has(h), `${name} links to ${h}, a transaction of no run on record`);
     for (const m of doc.matchAll(/https:\/\/basescan\.org\/tx\/0x[0-9a-fA-F]+/g)) {
       assert.ok([IDENTITY.mint, IDENTITY.transfer].includes(m[0]), `${name} links to ${m[0]}`);
@@ -272,12 +422,11 @@ test("the end balances, the time, the Execution Market task and the wallets are 
     assert.ok(ids.length > 0 && ids.every((id) => id === RUN.emTaskId), `${name} names the task ${RUN.emTaskId} and no other`);
   }
   assert.ok(HIRE.includes(`https://api.execution.market/api/v1/tasks/${RUN.emTaskId}`));
-  assert.ok(TX_BLOCK.includes(`https://api.execution.market/api/v1/tasks/${RUN.emTaskId}`));
+  assert.ok(norm(FORM_INTRO).includes(`task ${RUN.emTaskId}`), "SUBMISSION's form section names the task");
   // the test worker and the buyer, as the run named them; the buyer is the team's own wallet wherever the run is cited
   assert.match(norm(HIRE), new RegExp(`test worker ${WORKER} \\(a team wallet, not a person\\)`));
-  assert.match(WALLET_BLOCK, new RegExp(`^Test worker \\(a team wallet driven by a script, not a person\\): ${WORKER}$`, "m"));
   assert.ok(norm(HIRE).includes(`buyer ${BUYER}`));
-  for (const [name, text] of [["README, the hire", HIRE], ["SUBMISSION, the edit section's paragraph", INTRO], ["SUBMISSION, Transactions", TX_BLOCK], ["SUBMISSION, Accomplishments", ACC_BLOCK]]) {
+  for (const [name, text] of [["README, the hire", HIRE], ["SUBMISSION, how it's made", HOW_ITS_MADE]]) {
     assert.ok(norm(text).toLowerCase().includes(TEAM_BUYER), `${name} says the buyer is ${TEAM_BUYER}`);
   }
 });
@@ -289,30 +438,26 @@ test("the prices, the bounty and the deadline the README gives are the deploy's"
   assert.ok(norm(EM_SECTION).includes(`with the bounty (${formatUnits(EM.bounty, 6)} USDG), the deadline (${EM.deadlineHours} hours)`));
 });
 
-test("the merchant's ERC-8004 identity: both docs name the agent, the mint and the transfer to the merchant", () => {
-  for (const [name, text, said] of [
-    ["README.md", EM_SECTION, "then transferred it to the merchant"],
-    ["SUBMISSION.md", WALLET_BLOCK, "and transferred to the merchant"],
-  ]) {
-    assert.ok(text.includes(IDENTITY.mint) && text.includes(IDENTITY.transfer), `${name} links the mint and the transfer`);
-    assert.ok(text.indexOf(IDENTITY.mint) < text.indexOf(IDENTITY.transfer), `${name}: the mint, then the transfer`);
+test("the merchant's ERC-8004 identity: the README names the agent, the mint and the transfer; the form, the agent", () => {
+  assert.ok(EM_SECTION.includes(IDENTITY.mint) && EM_SECTION.includes(IDENTITY.transfer), "README links the mint and the transfer");
+  assert.ok(EM_SECTION.indexOf(IDENTITY.mint) < EM_SECTION.indexOf(IDENTITY.transfer), "README: the mint, then the transfer");
+  assert.ok(norm(EM_SECTION).includes("then transferred it to the merchant"));
+  for (const [name, text] of [["README.md", EM_SECTION], ["SUBMISSION, how it's made", HOW_ITS_MADE]]) {
     assert.match(norm(text), new RegExp(`agent ${IDENTITY.agent}\\b`), `${name} names agent ${IDENTITY.agent}`);
-    assert.ok(norm(text).includes(said), `${name} says: ${said}`);
   }
 });
 
 test("every text that cites the run says the worker is a team test wallet, not a person; none says a person did it", () => {
   for (const [name, text] of [
     ["README, the hire", HIRE],
-    ["SUBMISSION, the edit section's paragraph", INTRO],
-    ["SUBMISSION, Transactions", TX_BLOCK],
-    ["SUBMISSION, Accomplishments", ACC_BLOCK],
+    ["SUBMISSION, the form section's intro", FORM_INTRO],
+    ["SUBMISSION, how it's made", HOW_ITS_MADE],
   ]) {
     assert.ok(text.trim().length > 0 && norm(text).includes(TEST_WORKER), `${name} says: ${TEST_WORKER}`);
   }
   assert.ok(norm(HIRE).includes("No person took this task"), "README's hire says no person took it");
   // the server's own words on a hire nobody takes are about any hire, so they are left out of this one
-  for (const [name, text] of [["README, the hire", HIRE], ["SUBMISSION, the edit section", EDIT]]) {
+  for (const [name, text] of [["README, the hire", HIRE], ["SUBMISSION, the form's section", FORM_SECTION]]) {
     assert.doesNotMatch(norm(text).replace(EXPIRY, ""), PERSON_DID_IT, name);
   }
   // nowhere in either doc, in the past tense, does a person do a task: the only hire on record had none. The present
@@ -334,23 +479,34 @@ test("every text that cites the run says the worker is a team test wallet, not a
 test("a hire nobody takes: both docs quote the server's own words, the fee not refunded included", () => {
   assert.match(EXPIRY, /the fee you paid is not refunded/);
   assert.ok(EM_SECTION.includes(`> ${EXPIRY}\n`), "README quotes it");
-  assert.ok(WHAT_BLOCK.includes(`"${EXPIRY}"`), "SUBMISSION's long story quotes it");
+  assert.ok(WHAT_IT_DOES.includes(`"${EXPIRY}"`), "SUBMISSION's what it does quotes it");
 });
 
-test("SUBMISSION: the length given for each text to paste is its length", () => {
-  const rows = [...EDIT.matchAll(/^\| ([^|]+?) \| ([^|]+?) \| (\d+) chars/gm)];
-  assert.ok(rows.length >= 10, "the table of fields");
-  const plain = (s: string) => s.replace(/\*/g, "");
-  for (const [, field, cell, n] of rows) {
-    let text: string;
-    if (field === "One liner") {
-      text = /^`(.+)`$/.exec(cell)![1];
-    } else {
-      const labels = [...BLOCKS.keys()].filter((l) => plain(l).startsWith(plain(field)));
-      assert.equal(labels.length, 1, `one block for "${field}": ${labels.join(" / ")}`);
-      text = BLOCKS.get(labels[0])!;
-    }
-    assert.equal([...text].length, Number(n), `${field}: ${n} chars`);
+test("docs/kit: form-fields.md maps the real form, field for field; the click list and it point at SUBMISSION's section; the old drafts say they are outdated", () => {
+  const rows = [...KIT_FORM.matchAll(/^\| ([^|]+) \| ([^|]+) \| `(\w+)` \| (\w+) \| ([^|]+) \| ([^|]+) \|$/gm)];
+  assert.deepEqual(
+    rows.map((r) => [r[1], r[3], r[4], r[5]]),
+    FORM.map((f) => [f.step, f.key, f.kind, f.cap === null ? "-" : String(f.cap)]),
+    "form-fields.md: every field of the form, with its step, kind and cap",
+  );
+  assert.equal(rows.find((r) => r[3] === "payout_address")![6], "`[SAUL_WALLET_PUBLIC_ADDRESS]`", "the kit keeps the wallet placeholder");
+  // the anchor both use is the heading's
+  const link = `../../SUBMISSION.md#${anchor(FORM_HEADING)}`;
+  assert.equal(anchor(FORM_HEADING), "form-fields-worldisflatfun-edit-submission");
+  for (const [name, doc] of [["form-fields.md", KIT_FORM], ["00-CLICKS.md", KIT_CLICKS]]) {
+    assert.ok(doc.includes(`](${link})`), `${name} links to ${link}`);
+    // no placeholder left but the two only Saúl fills in
+    for (const p of doc.match(/\[[A-Z][A-Z0-9_]*\]/g) ?? []) assert.ok(["[SAUL_FULL_NAME]", "[SAUL_WALLET_PUBLIC_ADDRESS]", "[PLACEHOLDER]"].includes(p), `${name}: ${p}`);
+  }
+  assert.ok(SUBMISSION.includes(`](#${anchor(FORM_HEADING)})`), "SUBMISSION's header links to its form section");
+  // what the owner pastes or reads to paste names no RPC: not the public one, not the variable (c0der, 2026-11-08)
+  for (const [name, doc] of [["SUBMISSION.md", SUBMISSION], ...[...KIT].map(([f, d]) => [`docs/kit/${f}`, d])]) {
+    assert.doesNotMatch(doc, /rpc/i, `${name} names an RPC`);
+  }
+  // every other file of the kit opens with the notice that it is outdated
+  for (const [f, doc] of KIT) {
+    if (f === "form-fields.md" || f === "00-CLICKS.md") continue;
+    assert.match(doc, /^> \*\*Outdated\.\*\* /, `docs/kit/${f} says it is outdated`);
   }
 });
 
@@ -358,21 +514,14 @@ test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] 
   const X = "[@0xultravioleta](https://x.com/0xultravioleta)";
   assert.ok(section(README, "## Team").includes(`Saúl (${X}) and c0der.`), `README's team links ${X}`);
   assert.ok(section(KIT_README, "## Team").includes(`Saúl (${X}) and c0der.`), `the kit's README draft links ${X}`);
-  // SUBMISSION's team section, whole: its note, then the block pasted in the form line for line (the lead's handle and
-  // nothing after it, c0der by its name), and no address anywhere in it: no full name, no prize wallet
-  const team = section(SUBMISSION, "## 1. Your team");
+  // SUBMISSION's team step, whole: nothing to paste, its note, the lead by the handle and c0der by its name, and no
+  // address anywhere in it: no full name, no prize wallet
   const NOTE = "The lead's full name and the prize wallet are typed in the form by Saúl, never written here: this file is public.";
-  const LINES = [
-    "Team: Ultravioleta DAO",
-    "Lead: Saúl (@0xultravioleta)",
-    "Members: add c0der only if Saúl decides. Up to 4 people; each person can be on one team only.",
-  ].join("\n");
-  assert.doesNotMatch(team, /0x[0-9a-fA-F]{40}/, "SUBMISSION's team section: an address");
-  const pasted = /^```text\n([\s\S]*?)\n```$/m.exec(team);
-  assert.ok(pasted, "SUBMISSION's team section has its block");
-  assert.equal(pasted[1], LINES, "SUBMISSION's team block, line for line");
-  assert.ok(team.split("\n").includes(NOTE), `SUBMISSION's team section says: ${NOTE}`);
-  assert.equal(team.trim(), `${NOTE}\n\n\`\`\`text\n${LINES}\n\`\`\``, "SUBMISSION's team section: the note and the block, nothing else");
+  const team = norm(TEAM);
+  assert.ok(team.startsWith("### your team Nothing to paste: "), "SUBMISSION's team step: nothing to paste");
+  assert.ok(team.includes(NOTE), `SUBMISSION's team step says: ${NOTE}`);
+  assert.ok(team.includes("The team is Saúl (@0xultravioleta), the lead, and c0der, added as a member only if Saúl decides (up to 4 people, each on one team only)."), "SUBMISSION's team step: the lead and c0der");
+  assert.doesNotMatch(TEAM, /0x[0-9a-fA-F]{40}|```|@[\w.-]+\.\w/, "SUBMISSION's team step: an address, a block or an email");
   assert.match(KIT_FORM, /^Team \(placeholders\): Saúl \(\[SAUL_FULL_NAME\], @0xultravioleta, lead and submitter\) · c0der \(engineering; /m);
   // a person's placeholder: Saúl's, with the accent or without it, or c0der's (with a zero or an O)
   const PERSON = /\[(?:SA[UÚ]L|C[0O]DER)_\w*\]/gi;
@@ -386,7 +535,7 @@ test("the team: the owner's X and c0der in both docs and the kit; no [SAUL_…] 
     const want = f === "form-fields.md" || f === "00-CLICKS.md" ? ["[SAUL_FULL_NAME]", "[SAUL_WALLET_PUBLIC_ADDRESS]"] : [];
     assert.deepEqual([...new Set(doc.match(PERSON) ?? [])].sort(), want, `docs/kit/${f}: its [SAUL_…] and [C0DER_…] placeholders`);
   }
-  assert.ok(section(KIT_FORM, "### Form fields").includes("demo link, wallet [SAUL_WALLET_PUBLIC_ADDRESS]."), "the kit keeps the wallet placeholder");
+  // the wallet's placeholder is the payout wallet's row of the kit's table (the docs/kit test above)
   // form-fields.md's Rule bullet sends those two to the form
   const rule = KIT_FORM.split("\n").filter((l) => l.startsWith("- **Rule:**"));
   assert.equal(rule.length, 1, "form-fields.md has one Rule bullet");

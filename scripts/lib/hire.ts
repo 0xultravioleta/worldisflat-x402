@@ -63,7 +63,7 @@ export function rpcRefusal(env: Env): string | null {
   } catch {
     return "RPC_URL is not a URL; the value is not shown";
   }
-  const publics = [CHAINS.robinhood.rpcUrl, CHAINS["robinhood-testnet"].rpcUrl].map((u) => new URL(u).hostname);
+  const publics = [CHAINS.robinhood.publicRpcUrl, CHAINS["robinhood-testnet"].publicRpcUrl].map((u) => new URL(u).hostname);
   if (publics.includes(host) || host.endsWith(".chain.robinhood.com")) return "RPC_URL is a public RPC of Robinhood Chain: set the private one";
   return null;
 }

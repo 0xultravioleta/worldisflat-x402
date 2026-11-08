@@ -14,7 +14,8 @@ export interface BuyOptions {
   /** the wallet the payment must go to; required on mainnet */
   expectPayTo?: string | null;
   payer?: string;
-  rpcUrl?: string;
+  /** the RPC of `network` the SDK connects the wallet through (RPC_URL): required, so its public default is never used */
+  rpcUrl: string;
 }
 
 export interface Bought {
@@ -63,7 +64,8 @@ export async function buy(o: BuyOptions): Promise<Bought> {
       throw new Error(`mainnet: the 402 asks ${price} USDG to ${offer.payTo}. Re-run with CONFIRM_MAINNET_SPEND=${price} once that exact amount is approved.`);
     }
   }
-  const client = new X402Client({ defaultChain: o.network, ...(o.rpcUrl ? { rpcOverrides: { [o.network]: o.rpcUrl } } : {}) });
+  // the SDK connects the wallet through this RPC, never through the public one it ships with
+  const client = new X402Client({ defaultChain: o.network, rpcOverrides: { [o.network]: o.rpcUrl } });
   await client.connectWithPrivateKey(o.key, o.network);
   // the SDK fetches the 402 again before it signs: sign only an offer identical to the one checked above, on this
   // network, in USDG, to the same wallet, for the same amount; anything else throws NO_ACCEPTABLE_PAYMENT unsigned

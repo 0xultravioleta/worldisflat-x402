@@ -36,8 +36,8 @@ function envFile(file: string): Record<string, string> {
 
 const ON = envFile("deploy/aws/em-hire.env");
 const RECORDED: Any = JSON.parse(readFileSync("test/fixtures/em-payment-config.json", "utf8"));
-// the two secrets the container already holds, stood in for
-const SECRETS = { MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey, WORKER_TOKEN: "a-worker-token-of-16+" };
+// the three secrets the container already holds, stood in for
+const SECRETS = { MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey, WORKER_TOKEN: "a-worker-token-of-16+", RPC_URL: "https://private-rpc.example/robinhood/0123456789abcdef" };
 
 test("em-hire.env: no secret in it, and every value reads as .env.example says", () => {
   for (const k of ["MERCHANT_PRIVATE_KEY", "WORKER_TOKEN", "PAYER_PRIVATE_KEY", "RPC_URL"]) assert.ok(!(k in ON), k);
@@ -93,6 +93,23 @@ test("every key of em-hire.env reaches the container (deploy/aws/main.tf) and is
     assert.ok(k in ON, `${k} is read by src/config.ts but not set in em-hire.env`);
     assert.ok(container.has(k), `${k} is read by src/config.ts but not in main.tf`);
   }
+});
+
+test("the container gets its three secrets from required, sensitive variables (main.tf): RPC_URL too, with no default", () => {
+  const tf = readFileSync("deploy/aws/main.tf", "utf8");
+  const block = /environment = \{([\s\S]*?)\n\s*\}/.exec(tf)?.[1] ?? "";
+  const tfvars = readFileSync("deploy/aws/terraform.tfvars.example", "utf8");
+  for (const [k, v] of Object.entries({ RPC_URL: "rpc_url", MERCHANT_PRIVATE_KEY: "merchant_private_key", WORKER_TOKEN: "worker_token" })) {
+    assert.match(block, new RegExp(`^\\s*${k}\\s*= var\\.${v}$`, "m"), `main.tf: ${k} = var.${v}`);
+    const variable = new RegExp(`variable "${v}" \\{\\n([\\s\\S]*?)\\n\\}`).exec(tf)?.[1] ?? "";
+    assert.match(variable, /^\s*sensitive = true$/m, `variable ${v} is sensitive`);
+    assert.doesNotMatch(variable, /^\s*default\s*=/m, `variable ${v} has no default`);
+    assert.match(tfvars, new RegExp(`^${v}\\s+= ""$`, "m"), `terraform.tfvars.example asks for ${v}, empty`);
+  }
+  // and an empty rpc_url is refused by terraform itself, before any apply
+  assert.match(/variable "rpc_url" \{\n([\s\S]*?)\n\}/.exec(tf)![1], /condition\s+= length\(trimspace\(var\.rpc_url\)\) > 0/);
+  // the container refuses to start without it as well (src/config.ts: no default)
+  assert.throws(() => loadConfig({ ...ON, ...SECRETS, RPC_URL: "" }), /RPC_URL is required/);
 });
 
 test("EM_HIRE=off, and nothing else, turns hiring through Execution Market off: the board takes hires again", async () => {

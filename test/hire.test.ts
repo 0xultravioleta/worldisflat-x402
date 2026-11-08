@@ -330,6 +330,7 @@ function world(opts: { workerAuth?: "token" | "erc8128"; approvedClient?: string
   dirs.push(dir);
   const loaded = loadConfig({
     NETWORK: "robinhood",
+    RPC_URL: "http://127.0.0.1:9",
     PAY_TO: payTo,
     FACILITATOR_URL: facUrl,
     DATA_DIR: dir,
@@ -949,8 +950,11 @@ test("the rules: mainnet only, the private RPC only, every amount approved, a wo
   };
   assert.equal(refusal({}), null);
   assert.match(refusal({ NETWORK: "robinhood-testnet", WIF_CASHBACK: "0" })!, /mainnet only/);
-  assert.match(refusal({ RPC_URL: undefined })!, /RPC_URL is not set/);
-  assert.match(refusal({ RPC_URL: "" })!, /RPC_URL is not set/);
+  // without RPC_URL the server's own config refuses first (no default), and the run's rule names it as well
+  for (const missing of [undefined, ""]) {
+    assert.throws(() => refusal({ RPC_URL: missing }), /RPC_URL is required: /);
+    assert.match(rpcRefusal({ ...RUN_ENV, RPC_URL: missing })!, /RPC_URL is not set/);
+  }
   for (const pub of ["https://rpc.mainnet.chain.robinhood.com", "https://RPC.MAINNET.CHAIN.ROBINHOOD.COM/", "https://rpc.mainnet.chain.robinhood.com./", "https://RPC.mainnet.chain.robinhood.com.:443/x", "https://other.chain.robinhood.com./", "https://rpc.testnet.chain.robinhood.com", "https://other.chain.robinhood.com/x"]) {
     assert.match(refusal({ RPC_URL: pub })!, /public RPC/, pub);
   }

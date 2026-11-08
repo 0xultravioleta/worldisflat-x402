@@ -18,17 +18,18 @@ import { connectChain } from "../src/chain.js";
 import { USDG_DECIMALS, WIF_DECIMALS, formatUnits, txUrl, type NetworkName } from "../src/config.js";
 import { Store } from "../src/store.js";
 import { buy } from "./lib/buyer.js";
-import { configOrExit, keyOrExit } from "./lib/env.js";
+import { chainIdOrExit, configOrExit, exitRedacted, keyOrExit, rpcOrExit } from "./lib/env.js";
 import { ledgerCashback, livePassed, liveRunRefusal, remoteRefusal } from "./lib/live.js";
 
 if (existsSync(".env")) process.loadEnvFile(".env");
 const network = process.argv[2] as NetworkName;
 if (network !== "robinhood" && network !== "robinhood-testnet") throw new Error("usage: e2e-live.ts robinhood|robinhood-testnet");
 
-const env: Record<string, string | undefined> = { ...process.env, NETWORK: network };
-// RPC_URL in .env belongs to whichever network .env is for; a live run on the other network uses the public RPC
-if (process.env.NETWORK !== network) delete env.RPC_URL;
+// RPC_URL in .env belongs to the network .env names: a live run on the other one is refused, never sent through a
+// public RPC
+const env: Record<string, string | undefined> = { ...process.env, NETWORK: network, RPC_URL: rpcOrExit(network) };
 const cfg = configOrExit(env);
+exitRedacted([cfg.rpcUrl]);
 const key = keyOrExit("PAYER_PRIVATE_KEY");
 const refusal = liveRunRefusal(cfg, process.env);
 if (refusal) {
@@ -51,6 +52,7 @@ if (remote) {
   }
 }
 const payer = new Wallet(key).address;
+await chainIdOrExit(cfg.rpcUrl, cfg.chain);
 const chain = connectChain(cfg);
 const dataDir = mkdtempSync(path.join(tmpdir(), "flatfee-live-"));
 
@@ -105,6 +107,7 @@ try {
     maxAmount: formatUnits(price, USDG_DECIMALS),
     confirmMainnet: process.env.CONFIRM_MAINNET_SPEND ?? null,
     expectPayTo: cfg.payTo,
+    rpcUrl: cfg.rpcUrl,
   });
   console.log(`HTTP ${r.status}: ${r.body.answer ?? JSON.stringify(r.body).slice(0, 300)}`);
   const receipt = r.body.receipt ?? {};

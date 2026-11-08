@@ -175,7 +175,8 @@ The merchant wallet pays every escrow, so its signature is only ever produced fo
 
 ## How Execution Market works, as read in its repository
 
-Read from `UltravioletaDAO/execution-market` (`main` at `a675eb6`, 2026-11-04): its OpenAPI (`openapi/openapi.json`),
+Read from `UltravioletaDAO/execution-market`, a private repository (`main` at `a675eb6`, 2026-11-04; Execution Market
+itself is https://execution.market): its OpenAPI (`openapi/openapi.json`),
 the agent guide (`dashboard/public/skill.md` and `skill/reference/escrow.md`) and the routes in `mcp_server/api`.
 
 | Step | Endpoint | Notes |

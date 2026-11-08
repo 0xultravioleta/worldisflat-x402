@@ -1,20 +1,17 @@
 # Saúl click list: World Is Flat (Robinhood Chain)
 
-> **PENDING c0der capacity (Oct 29): HSK is GO. World Is Flat is built ONLY if c0der confirms a free Claude Code plan this weekend that does not put HSK (Nov 1) or Twitch (Nov 2) at risk. Kit kept intact.**
-
-
-- **URL:** https://worldisflat.fun/build
-- **Deadline:** Sat Oct 31, 2026 (time not published; finish by 9:00 AM EDT)
-- **Copy from:** `kits/world-is-flat/form-fields.md` (in form order), video from `video-script.md`, deck PDF from `deck-outline.md`.
+- **URL:** https://worldisflat.fun/build → sign in → edit submission
+- **Edits close:** Thu 12 Nov 2026, 17:30 UTC (round one 12-14 Nov, final 14-16 Nov 2026).
+- **Copy from:** [SUBMISSION.md, *Form fields*](../../SUBMISSION.md#form-fields-worldisflatfun-edit-submission), one
+  block per field in the form's order; [form-fields.md](form-fields.md) maps every field of the form.
 
 ## Fill these placeholders first (only Saúl has them)
-Search form-fields.md for `[` and replace: repo URL (after Saúl approves making it public), video URL (after upload), demo URL, IDs. `[SAUL_FULL_NAME]` and `[SAUL_WALLET_PUBLIC_ADDRESS]` are filled in the form, by Saúl, and never in this repo: it is public.
+Search form-fields.md for `[` and replace: nothing else is left; every text to paste is final in SUBMISSION.md. `[SAUL_FULL_NAME]` and `[SAUL_WALLET_PUBLIC_ADDRESS]` are filled in the form, by Saúl, and never in this repo: it is public.
 
 ## Clicks left for Saúl
-1. Sign in / join (Saúl only: login, passkey, 2FA).
-2. Paste each field from form-fields.md.
-3. Upload video / cover / deck where asked.
-4. Choose the track(s): Single pool.
-5. Tick the rules/consent box (Saúl reads it).
-6. Click **Submit** (not just Save draft) and screenshot the confirmation.
-7. Optional: post social-post.md from his account.
+1. Sign in (Saúl only: login, passkey, 2FA) and open **edit submission**.
+2. Step by step, paste each block of SUBMISSION.md's *Form fields* into its field; pick or tick the choice fields as
+   that section says. *transactions*: the seven hashes, one per line, nothing else.
+3. **Save changes** on each step (the form also saves a step 2 s after typing stops).
+4. On the review step, read every answer back against SUBMISSION.md, and screenshot it.
+5. Optional: an update ("dispatch") on worldisflat.fun, and a post from Saúl's account.

@@ -65,7 +65,7 @@ export function proofCopy(p) {
     wif: plain(p.wif.amount),
     wifSub: `${p.wif.cashback.count} cashback · ${p.wif.rewards.count} to workers`,
     escrows: String(p.escrows.count),
-    escrowSub: p.escrows.count ? `${usdg(p.escrows.amount)} USDG locked for workers` : "through Execution Market",
+    escrowSub: p.escrows.count ? `${usdg(p.escrows.amount)} USDG escrowed, then released` : "through Execution Market",
     note,
   };
 }
@@ -106,7 +106,7 @@ export function workCardView(w) {
     titled: !!w.title,
     from: w.from,
     to: w.to,
-    amount: w.bounty ? `${usdg(w.bounty)} USDG in escrow` : "escrow amount not recorded",
+    amount: w.bounty ? `${usdg(w.bounty)} USDG escrowed` : "escrow amount not recorded",
     paid: w.paid ? ` · ${usdg(w.paid)} to whoever delivered` : "",
     at: utcDate(w.at),
     links,

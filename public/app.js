@@ -240,7 +240,10 @@ async function loadProof() {
   }
 }
 
-// the demo video: a poster until clicked, then YouTube's player (nothing loads from YouTube before that)
+// a figure of the proof strip opens the list of its transactions
+for (const a of document.querySelectorAll('a.stat[href="#txs"]')) a.onclick = () => ($("#txs").open = true);
+
+// the demo video: a plain button (no thumbnail, nothing from YouTube) until clicked; the click loads YouTube's player
 $("#video-play").onclick = (e) => {
   const id = e.currentTarget.dataset.video;
   const frame = el("iframe", {

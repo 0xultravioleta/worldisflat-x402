@@ -416,7 +416,7 @@ export function wellKnownX402({ cfg, info, proof, origin }: PageCtx, quotes: { r
       networks: [{ name: cfg.chain.name, chainId: cfg.chain.chainId, type: "evm", tokens: [{ symbol: "USDG", address: cfg.chain.usdg, decimals: 6 }] }],
       endpoints,
       discovery: { llms: `${origin}/llms.txt`, skill: `${origin}/skill.md`, proof: `${origin}/proof`, info: `${origin}/api/info` },
-      ...(proof.identity?.robinhood ? { identity: { protocol: "ERC-8004", agentId: proof.identity.robinhood, network: cfg.chain.name, registry: proof.identity.registry } } : {}),
+      ...(proof.identity?.robinhood ? { identity: { protocol: "ERC-8004", agentId: Number(proof.identity.robinhood), network: cfg.chain.name, registry: proof.identity.registry } } : {}),
     },
     // only what answers 402 right now is listed as payable (a paused hire answers 503 and is left out)
     resources: quotes

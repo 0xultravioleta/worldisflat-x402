@@ -44,13 +44,21 @@ export interface Evidence {
   facilitator: string;
   transfers: (EvTransfer & { tx: string; at: string; sender: string; block?: number })[];
   tasks: EvTask[];
-  /** the ERC-8004 identity registry, and the merchant's agent ids there, as the dated read recorded them */
+  /** the ERC-8004 identity registry, as the dated read recorded it */
   identityRegistry: string | null;
-  merchantAgents: { robinhood: number | null; base: number | null };
   /** task id -> the swarm agent that delivered it, from KarmaKadabra's public graph */
   swarmWorkers: Record<string, string>;
   /** wallet (lower case) -> the swarm agent's name, as Execution Market's public API gives it */
   swarmAgents: Record<string, string>;
+  /** the merchant's ERC-8004 agent ids, as Execution Market's register records gave them */
+  merchantAgents: { robinhood: string | null; base: string | null };
+}
+
+/** " (Robinhood Chain)" or " (Base)": which chain's ERC-8004 registry an agent id of the merchant belongs to */
+function idChain(ev: Evidence, id: string | undefined): string {
+  if (id && id === ev.merchantAgents.robinhood) return " (Robinhood Chain)";
+  if (id && id === ev.merchantAgents.base) return " (Base)";
+  return "";
 }
 
 const lower = (s: unknown) => (typeof s === "string" ? s.toLowerCase() : "");
@@ -75,7 +83,7 @@ export function loadEvidence(files: string[] = EVIDENCE_FILES, read: (f: string)
       const workers: Record<string, string> = {};
       for (const t of d.karmakadabra_graph?.tasks ?? []) if (typeof t?.task === "string" && typeof t?.worker === "string") workers[t.task] = t.worker;
       const reg = d.execution_market?.merchant_registrations ?? {};
-      const agentId = (n: unknown) => (Number.isInteger(Number(n)) && Number(n) > 0 ? Number(n) : null);
+      const agentId = (n: unknown) => (n != null && /^\d+$/.test(String(n)) ? String(n) : null);
       ev = {
         readAt: d.read_at,
         block: Number(mt.to_block),
@@ -91,9 +99,9 @@ export function loadEvidence(files: string[] = EVIDENCE_FILES, read: (f: string)
     }
     if (!ev) return null;
     for (const [w, name] of Object.entries(d?.swarm_agents ?? {})) if (typeof name === "string") ev.swarmAgents[w.toLowerCase()] = name;
-    // a task counts once one of its escrow transactions is recorded
+    // a task counts once its payment out of the escrow is recorded: the page lists work paid out of escrow
     for (const t of d?.execution_market?.tasks ?? []) {
-      if (typeof t?.agent_id === "string" && (typeof t?.escrow_tx?.tx === "string" || typeof t?.payment_tx?.tx === "string")) ev.tasks.push(t);
+      if (typeof t?.agent_id === "string" && typeof t?.payment_tx?.tx === "string") ev.tasks.push(t);
     }
   }
   return ev;
@@ -162,7 +170,7 @@ export interface Proof {
   emFee: { bps: number; tx: string; url: string } | null;
   /** who signs the settlements and where the merchant's identity is, as the dated read recorded them */
   facilitator: string | null;
-  identity: { registry: string; robinhood: number | null; base: number | null } | null;
+  identity: { registry: string; robinhood: string | null; base: string | null } | null;
 }
 
 const sum = (txs: ProofTx[], decimals: number) => formatUnits(txs.reduce((a, t) => a + parseUnits(t.amount, decimals), 0n), decimals);
@@ -176,7 +184,14 @@ export const TEST_WORKER_LABEL = "Flat Fee's test worker (a team wallet run by a
  * The proof the page shows. The dated read counts only when this server is that merchant on Robinhood Chain mainnet;
  * a server on another wallet or on testnet shows its own settlements only.
  */
-export function buildProof(cfg: Config, evidence: Evidence | null, ledger: LedgerEntry[], tasks: Task[], serverSince: string): Proof {
+export function buildProof(
+  cfg: Config,
+  evidence: Evidence | null,
+  ledger: LedgerEntry[],
+  tasks: Task[],
+  serverSince: string,
+  opts: { localFork?: boolean } = {},
+): Proof {
   const chain = cfg.chain;
   const ev = evidence && chain.name === "robinhood" && lower(evidence.merchant) === lower(cfg.payTo) ? evidence : null;
   const merchant = lower(cfg.payTo);
@@ -207,7 +222,8 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
     for (const t of ev.tasks) {
       const mine = lower(t.agent_id) === merchant;
       const lock = (t.escrow_tx?.transfers ?? []).find((x) => lower(x.from) === lower(t.agent_id));
-      if (mine && lock && t.escrow_tx) add(escrows, { tx: t.escrow_tx.tx, at: t.escrow_tx.at, amount: lock.amount, source: "chain", block: t.escrow_tx.block });
+      // a hire paid from escrow: its lock and the payment out of the escrow, both recorded
+      if (mine && lock && t.escrow_tx && t.payment_tx?.tx) add(escrows, { tx: t.escrow_tx.tx, at: t.escrow_tx.at, amount: lock.amount, source: "chain", block: t.escrow_tx.block });
       // what the escrow paid whoever delivered: the larger of the payment's transfers (the other one is Execution Market's fee)
       const pay = [...(t.payment_tx?.transfers ?? [])].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
       if (mine && pay && t.payment_tx && hashOk(t.payment_tx.tx) && (!fee || t.payment_tx.at > fee.at)) {
@@ -220,7 +236,7 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
       if (!mine && t.payment_tx?.tx) swarm++;
       work.push({
         kind: mine ? "flatfee" : "swarm",
-        from: mine ? `Flat Fee · ERC-8004 agent ${t.erc8004_agent_id}` : `${buyer ?? "KarmaKadabra agent"} · ERC-8004 agent ${t.erc8004_agent_id}`,
+        from: mine ? `Flat Fee · ERC-8004 agent ${t.erc8004_agent_id}${idChain(ev, t.erc8004_agent_id)}` : `${buyer ?? "KarmaKadabra agent"} · ERC-8004 agent ${t.erc8004_agent_id}`,
         to: mine ? TEST_WORKER_LABEL : worker ? `${worker} (KarmaKadabra)` : "another KarmaKadabra agent",
         // Execution Market cuts long titles mid-word: Flat Fee's keep the part before the first colon
         title: typeof t.title === "string" ? (mine ? t.title.replace(/^Flat Fee: /, "").split(":")[0] : t.title) : null,
@@ -240,8 +256,10 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
     }
   }
 
-  // this server, since it started: settled calls, the $WIF it sent, the escrows it locked
-  for (const e of ledger) {
+  // this server, since it started: settled calls and the $WIF it sent on this network, and the hires whose escrow paid
+  // out. A local fork's settlements are not on the chain the explorer shows: none of them counts.
+  for (const e of opts.localFork ? [] : ledger) {
+    if (e.network !== chain.caip2) continue;
     if (e.settleTx) add(paid, { tx: e.settleTx, at: e.at, amount: formatUnits(BigInt(e.price), USDG_DECIMALS), source: "server" });
     // a cashback that failed or was not seen mined is not counted
     if (e.cashbackTx && !e.cashbackError && cfg.wif.cashback > 0n) {
@@ -249,29 +267,30 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
     }
   }
   const bounty = cfg.em ? formatUnits(cfg.em.bounty, USDG_DECIMALS) : null;
-  for (const t of tasks) {
+  for (const t of opts.localFork ? [] : tasks) {
     if (t.rewardTx && !t.rewardError && cfg.wif.workerReward > 0n) {
       add(wif, { tx: t.rewardTx, at: t.doneAt ?? t.createdAt, amount: formatUnits(cfg.wif.workerReward, WIF_DECIMALS), source: "server", kind: "reward" });
     }
     const em = t.em;
-    if (!em) continue;
-    if (em.escrowTx && bounty) add(escrows, { tx: em.escrowTx, at: em.assignedAt ?? t.createdAt, amount: bounty, source: "server" });
-    // a hire this server published shows once it is on Execution Market, unless the dated read already has it
-    if (!em.taskId || work.some((w) => w.ref === em.taskId!.slice(0, 8))) continue;
+    // Only a hire whose escrow paid out counts and shows: one still open has nothing locked yet, and one that expired
+    // has nothing locked or got its lock back. Neither was "paid from escrow", and no card says it is.
+    if (!em?.taskId || !hashOk(em.escrowTx) || !hashOk(em.paymentTx)) continue;
+    if (work.some((w) => w.ref === em.taskId!.slice(0, 8))) continue;
+    if (bounty) add(escrows, { tx: em.escrowTx, at: em.assignedAt ?? t.createdAt, amount: bounty, source: "server" });
     work.push({
       kind: "flatfee",
       from: "Flat Fee",
-      to: em.workerWallet ? "a worker on Execution Market" : "open on Execution Market",
+      to: "a worker on Execution Market",
       title: t.request,
       ref: em.taskId.slice(0, 8),
-      status: em.step === "completed" ? "released" : em.step,
+      status: "released",
       bounty,
       paid: null,
       at: t.createdAt,
       escrowTx: em.escrowTx,
-      escrowUrl: em.escrowTx ? txUrl(chain, em.escrowTx) : null,
+      escrowUrl: txUrl(chain, em.escrowTx),
       paymentTx: em.paymentTx,
-      paymentUrl: em.paymentTx ? txUrl(chain, em.paymentTx) : null,
+      paymentUrl: txUrl(chain, em.paymentTx),
       page: `https://execution.market/tasks/${em.taskId}`,
     });
   }

@@ -255,8 +255,9 @@ summary:hover .t { color: var(--lime); }
 /* demo video: a poster until it is clicked, then YouTube's player */
 .video-sec { padding: 56px var(--gutter) 8px; }
 .video { position: relative; max-width: 820px; aspect-ratio: 16 / 9; border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--line); background: #000; }
-.video-play { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: #000; border-radius: 0; }
-.video-play img { width: 100%; height: 100%; object-fit: cover; opacity: .82; display: block; }
+.video-play { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; color: var(--text);
+  background: radial-gradient(circle at 50% 45%, rgba(198, 255, 77, .16), transparent 55%), linear-gradient(160deg, var(--surface), var(--bg-2)); }
+.video-label { position: absolute; left: 0; right: 0; bottom: 18px; text-align: center; font: 600 var(--fs-small)/1.4 var(--font); color: var(--muted); }
 .video-play .play { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; background: var(--lime); }
 .video-play .play::after { content: ""; position: absolute; left: 31px; top: 24px; border-style: solid; border-width: 14px 0 14px 22px;
   border-color: transparent transparent transparent var(--on-lime); }

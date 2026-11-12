@@ -435,7 +435,7 @@ export function createApp({
   app.get("/api/ledger", (c) => c.json(ledgerBody()));
 
   // what the landing page shows as proof: every figure with its transactions (src/proof.ts)
-  const proofBody = () => buildProof(cfg, evidence, store.ledger(1000), store.tasks(), startedAt);
+  const proofBody = () => buildProof(cfg, evidence, store.ledger(Number.MAX_SAFE_INTEGER), store.tasks(), startedAt, { localFork });
   app.get("/api/proof", (c) => c.json(proofBody()));
 
   // the pages this server renders itself, for readers with no JavaScript (src/site.ts): the landing page filled in,

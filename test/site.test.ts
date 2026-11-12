@@ -12,11 +12,12 @@ import { Wallet, type JsonRpcProvider } from "ethers";
 import { createApp } from "../src/app.js";
 import type { Chain } from "../src/chain.js";
 import { loadConfig } from "../src/config.js";
-import type { EmHire } from "../src/emhire.js";
+import { newEmState, type EmHire } from "../src/emhire.js";
 import { EVIDENCE_FILES } from "../src/proof.js";
+import { skillMd } from "../src/site.js";
 import { Store } from "../src/store.js";
 // @ts-expect-error plain JS module shared with the browser
-import { flowCopy } from "../public/page-state.js";
+import { flowCopy, utcDate } from "../public/page-state.js";
 // @ts-expect-error plain JS module shared with the browser
 import { typedDataFor } from "../public/x402-browser.js";
 import { FakeDocument, visibleText } from "./fake-dom.js";
@@ -255,6 +256,90 @@ test("a buyer's text and a worker's answer reach the server-rendered page as tex
   // the escaped text reads back as the buyer wrote it
   const doc = new FakeDocument(html);
   assert.ok(visibleText(doc.querySelector("#tasks")).includes(evil));
+});
+
+test("a paid-out hire's card on the server-rendered page shows the buyer's request as text, never as markup", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "flatfee-site-card-"));
+  dirs.push(dir);
+  const store = new Store(dir);
+  const evil = `<script>alert(3)</script><b onclick=x>"'&`;
+  const em = { ...newEmState(new Date("2026-11-13T12:00:00Z")), step: "completed" as const, taskId: "cafecafe-0000-4000-8000-000000000000", escrowTx: `0x${"c1".repeat(32)}`, paymentTx: `0x${"c2".repeat(32)}` };
+  store.createTask({ request: evil, payer: Wallet.createRandom().address, paidTx: `0x${"c0".repeat(32)}`, via: "em", em });
+  const cfg = loadConfig({
+    RPC_URL: "http://127.0.0.1:9",
+    DATA_DIR: dir,
+    NETWORK: "robinhood",
+    PAY_TO: MERCHANT,
+    MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
+    EM_HIRE: "on",
+    EM_API_URL: "https://em.test",
+    EM_ESCROW_ADDRESS: EM_ENV.EM_ESCROW_ADDRESS,
+    EM_OPERATOR_ADDRESS: EM_ENV.EM_OPERATOR_ADDRESS,
+    EM_TOKEN_COLLECTOR_ADDRESS: EM_ENV.EM_TOKEN_COLLECTOR_ADDRESS,
+    EM_BOUNTY_USDG: "0.20",
+  });
+  const app = createApp({ cfg, chain, store, log: () => {}, emHire });
+  const html = await (await app.request("/")).text();
+  const work = /<ul class="work" id="work">([\s\S]*?)<\/ul>/.exec(html)![1];
+  assert.match(work, /#cafecafe/, "the card is there");
+  assert.ok(!work.includes("<script>alert(3)"), "no script in the card");
+  assert.ok(!work.includes("<b onclick"), "no markup in the card");
+  assert.ok(work.includes("&lt;script&gt;alert(3)&lt;/script&gt;&lt;b onclick=x&gt;&quot;&#39;&amp;"));
+  assert.ok(visibleText(new FakeDocument(html).querySelector("#work")).includes(evil));
+});
+
+test("GET /proof names where the locked USDG sits: the escrow's token store, the address every recorded lock pays into and every payment comes from", async () => {
+  const proof = await json(live, "/api/proof");
+  const store = proof.escrowTokenStore.toLowerCase();
+  const read = JSON.parse(readFileSync(EVIDENCE_FILES[2], "utf8")).escrow_token_store;
+  assert.equal(read.escrow, EM_ENV.EM_ESCROW_ADDRESS);
+  assert.equal(read.operator, EM_ENV.EM_OPERATOR_ADDRESS);
+  // the chain data the page already shows agrees: each lock moves USDG from the token collector into it, each payment
+  // out of escrow moves USDG out of it
+  const tasks = [JSON.parse(readFileSync(EVIDENCE_FILES[0], "utf8")), JSON.parse(readFileSync(EVIDENCE_FILES[1], "utf8"))].flatMap((d) => d.execution_market.tasks);
+  let locks = 0;
+  let payments = 0;
+  for (const t of tasks) {
+    if (t.escrow_tx) {
+      assert.ok(t.escrow_tx.transfers.some((x: { from: string; to: string }) => x.from.toLowerCase() === EM_ENV.EM_TOKEN_COLLECTOR_ADDRESS.toLowerCase() && x.to.toLowerCase() === store), t.escrow_tx.tx);
+      locks++;
+    }
+    if (t.payment_tx) {
+      assert.ok(t.payment_tx.transfers.every((x: { from: string }) => x.from.toLowerCase() === store), t.payment_tx.tx);
+      payments++;
+    }
+  }
+  assert.ok(locks >= 7 && payments >= 8);
+  const page = (await get(live, "/proof")).text;
+  assert.ok(page.includes(`/address/${proof.escrowTokenStore}"`));
+  assert.match(page, /Execution Market&#39;s escrow token store/);
+  // each lock and each payment with its date and its block
+  for (const w of proof.work) {
+    if (w.escrowAt) assert.ok(page.includes(`${utcDate(w.escrowAt)} · block ${Number(w.escrowBlock).toLocaleString("en-US")}`), `lock of #${w.ref}`);
+    if (w.paymentAt) assert.ok(page.includes(`${utcDate(w.paymentAt)} · block ${Number(w.paymentBlock).toLocaleString("en-US")}`), `payment of #${w.ref}`);
+  }
+  // newest first in every table, and the RPC example checks the newest paid call
+  const order = (txs: { url: string }[]) => txs.map((t) => page.indexOf(`href="${t.url}"`));
+  for (const list of [proof.paidCalls.txs, proof.wif.txs.filter((t: { kind: string }) => t.kind === "cashback")]) {
+    const pos = order(list);
+    assert.deepEqual(pos, [...pos].sort((x, y) => x - y));
+    assert.deepEqual(list.map((t: { at: string }) => t.at), list.map((t: { at: string }) => t.at).sort().reverse());
+  }
+  assert.ok(page.includes(`"params":["${proof.paidCalls.txs[0].tx}"]`));
+});
+
+test("skill.md names everything npm run buy reads, and its validBefore is the 402's own window", async () => {
+  const skill = (await get(live, "/skill.md")).text;
+  for (const v of [`FLATFEE_URL=${PUBLIC}`, "PAYER_PRIVATE_KEY", "RPC_URL", "NETWORK=robinhood", `PAY_TO=${MERCHANT}`, "CONFIRM_MAINNET_SPEND"]) assert.ok(skill.includes(v), v);
+  // the names are the ones the script reads
+  const buy = readFileSync("scripts/buy.ts", "utf8") + readFileSync("scripts/lib/env.ts", "utf8");
+  for (const v of ["FLATFEE_URL", "PAYER_PRIVATE_KEY", "CONFIRM_MAINNET_SPEND", "PAY_TO"]) assert.ok(buy.includes(v), v);
+  const ask = await unpaid402(live, "ask");
+  assert.ok(skill.includes(`validBefore: <now + ${ask.body.accepts[0].maxTimeoutSeconds}>`));
+  // the window is read from the 402, not assumed: a 402 with another window gives another validBefore
+  const ctx = { cfg: loadConfig({ RPC_URL: "http://127.0.0.1:9", NETWORK: "robinhood", PAY_TO: MERCHANT, DATA_DIR: tmpdir() }), info: await json(live, "/api/info"), proof: await json(live, "/api/proof"), ledger: [], tasks: [], origin: PUBLIC };
+  const other = { status: 402, body: { ...ask.body, accepts: [{ ...ask.body.accepts[0], maxTimeoutSeconds: 120 }] } };
+  assert.ok(skillMd(ctx, other, other).includes("validBefore: <now + 120>"));
 });
 
 test("the page links the agent entries and /proof, and every one answers", async () => {

@@ -10,7 +10,11 @@ import { USDG_DECIMALS, WIF_DECIMALS, txUrl, type Config } from "./config.js";
 import type { LedgerEntry, Task } from "./store.js";
 
 /** the evidence files the server reads, relative to its working directory (the Dockerfile copies docs/evidence) */
-export const EVIDENCE_FILES = ["docs/evidence/robinhood-2026-11-12.json", "docs/evidence/robinhood-swarm-2026-11-12.json"];
+export const EVIDENCE_FILES = [
+  "docs/evidence/robinhood-2026-11-12.json",
+  "docs/evidence/robinhood-swarm-2026-11-12.json",
+  "docs/evidence/robinhood-escrow-2026-11-12.json",
+];
 
 interface EvTransfer {
   token: string;
@@ -52,6 +56,8 @@ export interface Evidence {
   swarmAgents: Record<string, string>;
   /** the merchant's ERC-8004 agent ids, as Execution Market's register records gave them */
   merchantAgents: { robinhood: string | null; base: string | null };
+  /** where Execution Market's escrow keeps the locked USDG: its getTokenStore(operator), read on chain */
+  escrowTokenStore: string | null;
 }
 
 /** " (Robinhood Chain)" or " (Base)": which chain's ERC-8004 registry an agent id of the merchant belongs to */
@@ -95,9 +101,12 @@ export function loadEvidence(files: string[] = EVIDENCE_FILES, read: (f: string)
         swarmAgents: {},
         identityRegistry: typeof d.erc8004?.identity_registry === "string" ? d.erc8004.identity_registry : null,
         merchantAgents: { robinhood: agentId(reg.robinhood?.agent_id), base: agentId(reg.base?.agent_id) },
+        escrowTokenStore: null,
       };
     }
     if (!ev) return null;
+    const store = d?.escrow_token_store?.address;
+    if (typeof store === "string" && /^0x[0-9a-fA-F]{40}$/.test(store)) ev.escrowTokenStore = store;
     for (const [w, name] of Object.entries(d?.swarm_agents ?? {})) if (typeof name === "string") ev.swarmAgents[w.toLowerCase()] = name;
     // a task counts once its payment out of the escrow is recorded: the page lists work paid out of escrow
     for (const t of d?.execution_market?.tasks ?? []) {
@@ -146,6 +155,9 @@ export interface WorkCard {
   /** the blocks of the lock and of the payment, when the dated read recorded them */
   escrowBlock?: number;
   paymentBlock?: number;
+  /** when the lock and the payment were mined, when the dated read recorded them */
+  escrowAt?: string;
+  paymentAt?: string;
   /** the task's page on Execution Market, when its full id is known */
   page: string | null;
 }
@@ -171,6 +183,8 @@ export interface Proof {
   /** who signs the settlements and where the merchant's identity is, as the dated read recorded them */
   facilitator: string | null;
   identity: { registry: string; robinhood: string | null; base: string | null } | null;
+  /** where Execution Market's escrow keeps the locked USDG (its getTokenStore(operator)), as the dated read recorded it */
+  escrowTokenStore: string | null;
 }
 
 const sum = (txs: ProofTx[], decimals: number) => formatUnits(txs.reduce((a, t) => a + parseUnits(t.amount, decimals), 0n), decimals);
@@ -251,6 +265,8 @@ export function buildProof(
         paymentUrl: t.payment_tx?.tx ? txUrl(chain, t.payment_tx.tx) : null,
         escrowBlock: t.escrow_tx?.block,
         paymentBlock: t.payment_tx?.block,
+        escrowAt: t.escrow_tx?.at,
+        paymentAt: t.payment_tx?.at,
         page: t.id ? `https://execution.market/tasks/${t.id}` : null,
       });
     }
@@ -315,5 +331,6 @@ export function buildProof(
     emFee: fee ? { bps: fee.bps, tx: fee.tx, url: fee.url } : null,
     facilitator: ev ? ev.facilitator : null,
     identity: ev?.identityRegistry ? { registry: ev.identityRegistry, ...ev.merchantAgents } : null,
+    escrowTokenStore: ev?.escrowTokenStore ?? null,
   };
 }

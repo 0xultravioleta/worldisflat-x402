@@ -1,6 +1,6 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
 // where a hire's money goes (page-state.js flowCopy) does not change while the server runs: the server renders it
-import { escrowCopy, isAbsent, proofCopy, short, txRows, usdg, valueAt, workCardView, workMeta } from "/page-state.js?v=5";
+import { escrowCopy, isAbsent, proofCopy, short, txRows, usdg, utcDate, valueAt, workCardView, workMeta } from "/page-state.js?v=6";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -259,7 +259,8 @@ async function refresh() {
   $("#ledger").replaceChildren(
     // rows of the role="table" in index.html; data-k labels the cells on a phone, where the header row is hidden
     ...(ledger.length ? ledger.map((e) => el("li", { role: "row" },
-      el("span", { role: "cell" }, new Date(e.at).toLocaleTimeString()),
+      // the same time the server renders (UTC), so the page reads the same before and after the script
+      el("span", { role: "cell" }, utcDate(e.at)),
       el("span", { role: "cell" }, e.kind === "ask" ? "ask" : `hire #${e.taskId}`),
       el("span", { role: "cell", class: "mono", "data-k": "payer" }, short(e.payer)),
       el("span", { role: "cell" }, `${usdg(e.price)} USDG${e.tier === "holder" ? " (holder)" : ""}`),

@@ -401,7 +401,7 @@ test("on the live demo's wallet the proof strip, the transactions and the escrow
 });
 
 test("what the server renders with no JavaScript is what app.js draws: the script only refreshes it", async () => {
-  const regions = ["#hire-pay", "#ask-pay", ".chain", ".meta", "#escrow-pill", "#hire-status", "#escrow-foot", ".steps", "#board-meta", "#board-how", "#facts", ".stats", "#proof-note", "#tx-list", "#work-meta", "#work", "#wif", "#flow"];
+  const regions = ["#hire-pay", "#ask-pay", ".chain", ".meta", "#escrow-pill", "#hire-status", "#escrow-foot", ".steps", "#board-meta", "#board-how", "#facts", ".stats", "#proof-note", "#tx-list", "#work-meta", "#work", "#wif", "#flow", "#ledger"];
   for (const base of [on, paused, off, live]) {
     const ssr = new FakeDocument(await (await fetch(`${base}/`)).text());
     const before = Object.fromEntries(regions.map((r) => [r, visibleText(ssr.querySelector(r))]));

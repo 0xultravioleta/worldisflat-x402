@@ -132,6 +132,7 @@ test("a paid call is USDG into the merchant in a transaction the facilitator sen
     swarmAgents: {},
     merchantAgents: { robinhood: null, base: null },
     identityRegistry: null,
+    escrowTokenStore: null,
     transfers: [
       { token: "USDG", from: "0x1111111111111111111111111111111111111111", to: MERCHANT.toLowerCase(), amount: "0.1", tx: hash("a1"), at: "2026-11-01T00:00:01Z", sender: FACILITATOR.toLowerCase() },
       // the merchant's own funding: not sent by the facilitator

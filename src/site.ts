@@ -194,6 +194,8 @@ ${body}
 }
 
 const block = (b: number | undefined) => (b ? Number(b).toLocaleString("en-US") : "—");
+/** a lock's or a payment's time, when the dated read recorded it */
+const when = (at: string | undefined) => (at ? utcDate(at) : null);
 
 function txTable(caption: string, rows: ProofTx[], amount: (t: ProofTx) => string) {
   if (!rows.length) return "";
@@ -215,8 +217,8 @@ function workTable(caption: string, rows: WorkCard[]) {
         (w) =>
           `<tr><td>${w.page ? a(w.page, `#${w.ref}`) : esc(`#${w.ref}`)}<br /><span class="w">${esc(w.status)}</span></td>` +
           `<td>${esc(w.from)} → ${esc(w.to)}</td>` +
-          `<td class="mono">${w.escrowUrl ? `${a(w.escrowUrl, short(w.escrowTx))}<br /><span class="w">${esc(w.bounty ? `${usdg(w.bounty)} USDG · block ${block(w.escrowBlock)}` : `block ${block(w.escrowBlock)}`)}</span>` : "not in this record"}</td>` +
-          `<td class="mono">${w.paymentUrl ? `${a(w.paymentUrl, short(w.paymentTx))}<br /><span class="w">${esc(w.paid ? `${usdg(w.paid)} USDG to whoever delivered · block ${block(w.paymentBlock)}` : `block ${block(w.paymentBlock)}`)}</span>` : "—"}</td></tr>`,
+          `<td class="mono">${w.escrowUrl ? `${a(w.escrowUrl, short(w.escrowTx))}<br /><span class="w">${esc([w.bounty ? `${usdg(w.bounty)} USDG` : null, when(w.escrowAt), `block ${block(w.escrowBlock)}`].filter(Boolean).join(" · "))}</span>` : "not in this record"}</td>` +
+          `<td class="mono">${w.paymentUrl ? `${a(w.paymentUrl, short(w.paymentTx))}<br /><span class="w">${esc([w.paid ? `${usdg(w.paid)} USDG to whoever delivered` : null, when(w.paymentAt), `block ${block(w.paymentBlock)}`].filter(Boolean).join(" · "))}</span>` : "—"}</td></tr>`,
       )
       .join("") +
     `</tbody></table>`
@@ -233,9 +235,16 @@ export function renderProofPage({ cfg, info, proof, origin }: PageCtx): string {
   contracts.push(["Flat Fee's merchant wallet", cfg.payTo, "receives each payment, sends the $WIF and funds the hires' escrow"]);
   if (proof.facilitator) contracts.push(["Ultravioleta's x402 facilitator", proof.facilitator, "submits each settlement and pays its gas"]);
   if (cfg.em) {
-    contracts.push(["Execution Market's escrow", cfg.em.escrow.escrow, "holds a worker's pay between the lock and its release"]);
-    contracts.push(["Execution Market's operator", cfg.em.escrow.operator, "receives Execution Market's fee when the escrow pays out"]);
-    contracts.push(["Execution Market's token collector", cfg.em.escrow.tokenCollector, "takes the locked USDG into the escrow"]);
+    contracts.push(["Execution Market's escrow", cfg.em.escrow.escrow, "the AuthCaptureEscrow contract that locks a worker's pay and releases or returns it"]);
+    contracts.push(["Execution Market's operator", cfg.em.escrow.operator, "runs the escrow for Execution Market, and receives its fee when the escrow pays out"]);
+    contracts.push(["Execution Market's token collector", cfg.em.escrow.tokenCollector, "pulls a lock's USDG from whoever locks it and passes it to the token store"]);
+  }
+  if (proof.escrowTokenStore) {
+    contracts.push([
+      "Execution Market's escrow token store",
+      proof.escrowTokenStore,
+      "holds the locked USDG until the escrow pays it out: every lock in the tables below moves the USDG into it, and every payment out of escrow comes from it (the escrow's getTokenStore(operator), read on chain)",
+    ]);
   }
   if (proof.identity) {
     const ids = [proof.identity.robinhood ? `agent ${proof.identity.robinhood} on ${cfg.chain.label}` : null, proof.identity.base ? `agent ${proof.identity.base} on Base` : null].filter(Boolean).join(", ");
@@ -373,7 +382,7 @@ The facilitator settles it on chain, then the answer comes back with a \`receipt
 
 ## Without writing the signing code
 
-- From a clone of https://github.com/0xultravioleta/worldisflat-x402: \`npm run buy -- "latest block?"\` signs, pays and prints the answer and the transaction.
+- From a clone of https://github.com/0xultravioleta/worldisflat-x402: \`npm run buy -- "latest block?"\` signs, pays and prints the answer and the transaction. It reads \`FLATFEE_URL=${origin}\` (without it, it pays a server on localhost), \`PAYER_PRIVATE_KEY\` (the wallet that pays, holding the USDG), \`RPC_URL\` (an RPC of ${info.network.label}), \`NETWORK=${info.network.name}\` and \`PAY_TO=${info.payTo}\` (the recipient the 402 must name)${info.network.name === "robinhood" ? `, and on mainnet \`CONFIRM_MAINNET_SPEND\` set to the exact amount the 402 asks (${usdg(info.prices.ask.standard)}), or it stops before paying` : ""}.
 - The public npm package \`uvd-x402-sdk\` builds the same payment header; Flat Fee's server uses it for its paywall.
 
 More: ${origin}/llms.txt · ${origin}/.well-known/x402 · ${origin}/proof

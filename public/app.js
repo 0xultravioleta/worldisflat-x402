@@ -1,5 +1,6 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
-import { escrowCopy, flowCopy, isAbsent, proofCopy, short, txRows, usdg, valueAt, workCardView, workMeta } from "/page-state.js?v=5";
+// where a hire's money goes (page-state.js flowCopy) does not change while the server runs: the server renders it
+import { escrowCopy, isAbsent, proofCopy, short, txRows, usdg, valueAt, workCardView, workMeta } from "/page-state.js?v=5";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -200,7 +201,6 @@ function renderProof(p) {
   // the work paid out of escrow: Flat Fee's hires and the swarm's tasks on the same market
   $("#work-meta").textContent = workMeta(p);
   $("#work").replaceChildren(...(p.work.length ? p.work.map(workCard) : [el("li", { class: "empty" }, "No escrowed work to show yet.")]));
-  renderFlow(p);
 }
 
 function workCard(w) {
@@ -213,17 +213,6 @@ function workCard(w) {
     el("p", { class: "job-amt" }, el("span", { class: "w" }, v.at)),
     el("p", { class: "job-links" }, ...v.links.map((l) => link(l.href, l.text))),
   );
-}
-
-// where a hire's money goes (page-state.js flowCopy): only when this server hires through Execution Market
-function renderFlow(p) {
-  const f = flowCopy(info, p);
-  $("#flow").hidden = !f;
-  if (!f) return;
-  for (const k of ["pay", "payHolder", "bounty", "keep", "keepHolder", "worker", "fee", "feeAmount"]) $(`#flow-${k}`).textContent = f[k];
-  $("#flow-fee-tx").setAttribute("href", f.feeUrl);
-  $("#flow-reward").hidden = !f.reward;
-  if (f.reward) $("#flow-reward-n").textContent = f.reward;
 }
 
 async function loadProof() {

@@ -244,7 +244,8 @@ export function renderProofPage({ cfg, info, proof, origin }: PageCtx): string {
   const first = proof.paidCalls.txs[0]?.tx ?? proof.escrows.txs[0]?.tx ?? null;
   const flatfee = proof.work.filter((w) => w.kind === "flatfee");
   const swarm = proof.work.filter((w) => w.kind === "swarm");
-  const rpc = cfg.chain.publicRpcUrl;
+  // the public RPC as /api/info gives it for a wallet's "add network": printed here, never connected to
+  const rpc = info.network.rpcUrl;
   const body = `
     <section class="hero">
       <p class="eyebrow">Proof · ${esc(cfg.chain.label)} · chain id ${esc(cfg.chain.chainId)}</p>
@@ -279,7 +280,6 @@ ${contracts.map(([what, x, part]) => `        <tr><td>${esc(what)}</td><td>${add
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["${esc(first ?? "0x<transaction hash>")}"]}'</pre>
       <p class="card-sub">The same figures as JSON: <a href="/api/proof">${esc(origin)}/api/proof</a>. The dated reads behind them, with every block and sender: <a href="https://github.com/0xultravioleta/worldisflat-x402/tree/main/docs/evidence">docs/evidence</a>. What this server charges now: <a href="/api/info">${esc(origin)}/api/info</a>.</p>
     </section>`;
-  void info;
   return shell("Flat Fee proof", "Every contract, wallet and transaction behind Flat Fee on Robinhood Chain, and how to check each one by RPC.", body);
 }
 

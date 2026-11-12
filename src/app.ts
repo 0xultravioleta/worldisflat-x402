@@ -449,9 +449,9 @@ export function createApp({
     origin: cfg.publicUrl ?? new URL(c.req.url).origin,
   });
   // this server's own unpaid 402 for a call (or its refusal, e.g. a paused hire's 503): nothing reaches the facilitator
-  const quote = async (route: Route): Promise<Quote> => {
+  const quote = async (route: Route, origin: string): Promise<Quote> => {
     const body = route === "ask" ? { question: "What is the latest block?" } : { request: "Check that the cafe on 5th street is open and reply in text with today's hours." };
-    const r = await app.request(`/api/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const r = await app.request(new URL(`/api/${route}`, origin).href, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     return { status: r.status, body: await r.json().catch(() => null) };
   };
   if (pageHtml) {
@@ -460,12 +460,14 @@ export function createApp({
   app.get("/proof", (c) => c.html(renderProofPage(pageCtx(c))));
   app.get("/llms.txt", (c) => c.text(llmsTxt(pageCtx(c))));
   app.get("/skill.md", async (c) => {
-    const [ask, hire] = [await quote("ask"), await quote("hire")];
-    return c.body(skillMd(pageCtx(c), ask, hire), 200, { "content-type": "text/markdown; charset=utf-8" });
+    const ctx = pageCtx(c);
+    const [ask, hire] = [await quote("ask", ctx.origin), await quote("hire", ctx.origin)];
+    return c.body(skillMd(ctx, ask, hire), 200, { "content-type": "text/markdown; charset=utf-8" });
   });
   app.get("/.well-known/x402", async (c) => {
-    const quotes = [{ route: "ask" as const, quote: await quote("ask") }, { route: "hire" as const, quote: await quote("hire") }];
-    return c.json(wellKnownX402(pageCtx(c), quotes));
+    const ctx = pageCtx(c);
+    const quotes = [{ route: "ask" as const, quote: await quote("ask", ctx.origin) }, { route: "hire" as const, quote: await quote("hire", ctx.origin) }];
+    return c.json(wellKnownX402(ctx, quotes));
   });
 
   app.get("/api/tasks", (c) => c.json(store.tasks().map(view)));

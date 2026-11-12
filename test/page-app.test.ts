@@ -376,6 +376,12 @@ test("on the live demo's wallet the proof strip, the transactions and the escrow
     const rows = doc.querySelectorAll("#tx-list li");
     assert.equal(rows.length, proof.paidCalls.count + proof.wif.count + proof.escrows.count);
     for (const li of rows) assert.match(li.querySelector("a")!.getAttribute("href")!, /^https:\/\/robinhoodchain\.blockscout\.com\/tx\/0x[0-9a-f]{64}$/);
+    // newest first, with the paid calls, the $WIF and the escrows merged into one list
+    const at = new Map([...proof.paidCalls.txs, ...proof.wif.txs, ...proof.escrows.txs].map((t: { url: string; at: string }) => [t.url, t.at]));
+    const times = rows.map((li) => at.get(li.querySelector("a")!.getAttribute("href")!));
+    assert.ok(times.every(Boolean), "every row is a transaction of the proof");
+    assert.ok(new Set(times).size > 1, "the rows span more than one time, so their order says something");
+    assert.deepEqual(times, [...times].sort().reverse());
     // a card per escrowed task, with what the server says about it
     const cards = doc.querySelectorAll("#work li");
     assert.equal(cards.length, proof.work.length);

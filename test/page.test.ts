@@ -167,8 +167,8 @@ test("app.js applies the server's escrow state and sends the same requests as be
 test("the page calls only API routes the server has", async () => {
   const app = readFileSync("public/app.js", "utf8");
   const used = [...new Set([...app.matchAll(/"(\/api\/[a-z/]+)"/g)].map((m) => m[1]))].sort();
-  assert.deepEqual(used, ["/api/ask", "/api/hire", "/api/info", "/api/ledger", "/api/tasks"]);
-  for (const p of ["/api/info", "/api/ledger", "/api/tasks"]) assert.equal((await fetch(`${base}${p}`)).status, 200, p);
+  assert.deepEqual(used, ["/api/ask", "/api/hire", "/api/info", "/api/ledger", "/api/proof", "/api/tasks"]);
+  for (const p of ["/api/info", "/api/ledger", "/api/proof", "/api/tasks"]) assert.equal((await fetch(`${base}${p}`)).status, 200, p);
   // the board actions the page posts to (claim / complete) are there, and closed without the worker token
   assert.match(app, /`\/api\/tasks\/\$\{id\}\/\$\{action\}`/);
   for (const action of ["claim", "complete"]) {
@@ -239,18 +239,24 @@ test("the escrow wording, word for word: a change to it is a change to this test
   });
   // no expiry from the server, or not a string: nothing is said
   for (const bad of [undefined, null, "", "  ", 42, ["x"]]) assert.equal(escrowCopy({ hire: { via: "execution-market", available: true, expiry: bad } }).expiry, null, String(bad));
-  // the first screen's fixed text: headline, subtitle, button, the line under it, and the four steps
+  // the first screen's fixed text: headline, the sentence that says what Flat Fee is, the hire's button, the line
+  // under it, and the hire's four escrow steps
   const html = readFileSync("public/index.html", "utf8");
   const text = (re: RegExp) => {
     const m = re.exec(html);
     assert.ok(m, String(re));
     return m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
   };
-  assert.equal(text(/<h1 id="h">([\s\S]*?)<\/h1>/), "Hire a human for a small task.");
-  assert.equal(text(/<p class="sub">([\s\S]*?)<\/p>/), "One flat fee in USDG. No account, no card.");
+  assert.equal(text(/<h1 id="h">([\s\S]*?)<\/h1>/), "One flat fee. One signature. An agent answers, or a human does the task.");
+  assert.equal(
+    text(/<p class="sub">([\s\S]*?)<\/p>/),
+    "Flat Fee is a pay-per-call storefront on Robinhood Chain: sign one flat USDG payment to ask an AI agent or hire a human. No account, no API key, no gas, and … $WIF back on every paid call, up to a daily budget.",
+  );
+  // the $WIF part of that sentence waits for a cashback from the server
+  assert.match(html, /no gas<span data-needs="wif\.cashback" hidden>, and <span data-info="wif\.cashback">…<\/span> \$WIF back on every paid call, up to a daily budget<\/span>\./);
   assert.equal(text(/<button class="pay" id="hire-pay" type="button">([\s\S]*?)<\/button>/), "Pay … USDG and hire");
   assert.equal(text(/<p class="meta">([\s\S]*?)<\/p>/), "No gas, no refunds · $WIF holders (…+) pay …");
-  assert.equal(text(/<h2 id="how">([\s\S]*?)<\/h2>/), "How hiring with escrow works");
+  assert.equal(text(/<h4 id="how">([\s\S]*?)<\/h4>/), "How hiring with escrow works");
   const steps = [...text(/<ol class="steps">([\s\S]*?)<\/ol>/).matchAll(/[^.]+\./g)].map((m) => m[0].trim());
   assert.deepEqual(steps, [
     "You pay the flat fee up front.",

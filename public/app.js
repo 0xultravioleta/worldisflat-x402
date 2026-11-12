@@ -1,5 +1,5 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
-import { escrowCopy, isAbsent, usdg, valueAt } from "/page-state.js?v=3";
+import { escrowCopy, isAbsent, plain, proofCopy, usdg, utcDate, valueAt } from "/page-state.js?v=4";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -173,7 +173,98 @@ function taskItem(t, drafts) {
   return li;
 }
 
+// the proof strip, the transactions behind it and the work paid out of escrow (GET /api/proof, src/proof.ts)
+let lastProof = null;
+
+function setStat(id, n, sub) {
+  $(`#${id} .n`).textContent = n;
+  if (sub != null) $(`#${id} .s`).textContent = sub;
+}
+
+function renderProof(p) {
+  const c = proofCopy(p);
+  setStat("stat-calls", c.calls);
+  setStat("stat-usdg", c.usdg);
+  setStat("stat-wif", c.wif, c.wifSub);
+  setStat("stat-escrow", c.escrows, c.escrowSub);
+  $("#proof-note").textContent = c.note;
+  $("#proof-note").classList.toggle("bad", !p);
+  if (!p) return;
+  $("#proof-merchant").setAttribute("href", p.merchantUrl);
+  // every transaction behind the figures, newest first
+  const rows = [
+    ...p.paidCalls.txs.map((t) => ["paid call", `${usdg(t.amount)} USDG`, t]),
+    ...p.wif.txs.map((t) => [t.kind === "reward" ? "$WIF to a worker" : "$WIF cashback", `${plain(t.amount)} $WIF`, t]),
+    ...p.escrows.txs.map((t) => ["hire escrow", `${usdg(t.amount)} USDG`, t]),
+  ].sort((a, b) => (a[2].at < b[2].at ? 1 : -1));
+  $("#tx-list").replaceChildren(
+    ...(rows.length
+      ? rows.map(([what, amount, t]) => el("li", {}, el("span", { class: "w" }, utcDate(t.at)), el("span", {}, `${what} · ${amount}`), link(t.url, short(t.tx))))
+      : [el("li", { class: "empty" }, "No transactions to show yet.")]),
+  );
+  // the work paid out of escrow: Flat Fee's hires and the swarm's tasks on the same market
+  const hires = p.work.filter((w) => w.kind === "flatfee").length;
+  $("#work-meta").textContent = `${hires} Flat Fee ${hires === 1 ? "hire" : "hires"} · ${p.swarmPaid} KarmaKadabra ${p.swarmPaid === 1 ? "task" : "tasks"}, agent to agent`;
+  $("#work").replaceChildren(...(p.work.length ? p.work.map(workCard) : [el("li", { class: "empty" }, "No escrowed work to show yet.")]));
+}
+
+function workCard(w) {
+  const links = el("p", { class: "job-links" });
+  if (w.escrowUrl) links.append(link(w.escrowUrl, "escrow lock ↗"));
+  if (w.paymentUrl) links.append(link(w.paymentUrl, "payment ↗"));
+  if (w.page) links.append(link(w.page, "task ↗"));
+  const amount = el("p", { class: "job-amt" }, w.bounty ? `${usdg(w.bounty)} USDG escrowed` : "escrow amount not recorded");
+  if (w.paid) amount.append(el("span", { class: "w" }, ` · ${usdg(w.paid)} to whoever delivered`));
+  return el("li", { class: "job" },
+    el("p", { class: "job-top" }, el("span", { class: `st ${w.status}` }, w.status), w.kind === "flatfee" ? "Flat Fee hire" : "KarmaKadabra · agent to agent", w.ref ? ` · #${w.ref}` : ""),
+    el("p", { class: w.title ? "job-title" : "job-title none" }, w.title || "Title not in this record"),
+    el("p", { class: "job-who" }, el("b", {}, w.from), " → ", w.to),
+    amount,
+    el("p", { class: "job-amt" }, el("span", { class: "w" }, utcDate(w.at))),
+    links,
+  );
+}
+
+async function loadProof() {
+  try {
+    const r = await fetch("/api/proof");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    if (text === lastProof) return;
+    renderProof(JSON.parse(text));
+    lastProof = text;
+  } catch {
+    // keep what was already shown; say so only when nothing was ever read
+    if (lastProof === null) renderProof(null);
+  }
+}
+
+// a figure of the proof strip opens the list of its transactions
+for (const a of document.querySelectorAll('a.stat[href="#txs"]')) a.onclick = () => ($("#txs").open = true);
+
+// the demo video: a plain button (no thumbnail, nothing from YouTube) until clicked; the click loads YouTube's player
+$("#video-play").onclick = (e) => {
+  const id = e.currentTarget.dataset.video;
+  const frame = el("iframe", {
+    src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`,
+    title: "Flat Fee demo video",
+    allow: "autoplay; encrypted-media; picture-in-picture",
+    allowfullscreen: "",
+  });
+  $("#video-box").replaceChildren(frame);
+};
+$("#copy-curl").onclick = async (e) => {
+  const b = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText($("#curl").textContent);
+    b.textContent = "Copied";
+  } catch {
+    b.textContent = "Select and copy";
+  }
+};
+
 async function refresh() {
+  await loadProof();
   const [ledger, tasks] = await Promise.all([(await fetch("/api/ledger")).json(), (await fetch("/api/tasks")).json()]);
   $("#ledger").replaceChildren(
     // rows of the role="table" in index.html; data-k labels the cells on a phone, where the header row is hidden

@@ -6,6 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY src ./src
 COPY public ./public
+# the dated reads on chain behind GET /api/proof (src/proof.ts)
+COPY docs/evidence ./docs/evidence
 COPY tsconfig.json ./
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node

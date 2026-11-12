@@ -20,6 +20,56 @@ export function usdg(v) {
   return `${whole}.${frac.replace(/0+$/, "").padEnd(2, "0")}`;
 }
 
+/** a token amount as GET /api/proof sends it ("140.0", "0.6") with no trailing zeros: "140", "0.6" */
+export function plain(v) {
+  const [whole, frac = ""] = String(v).split(".");
+  const f = frac.replace(/0+$/, "");
+  return f ? `${whole}.${f}` : whole;
+}
+
+/** "2026-11-12T03:14:35Z" -> "12 Nov 2026, 03:14 UTC"; anything else as it came */
+export function utcDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(iso));
+  if (!m) return String(iso);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1];
+  return month ? `${Number(m[3])} ${month} ${m[1]}, ${m[4]}:${m[5]} UTC` : String(iso);
+}
+
+/**
+ * What the proof strip shows, from GET /api/proof. A figure is shown only when it was read: with the dated read on
+ * chain, or with at least one settlement of this server since it started. Otherwise every figure is "—" and the note
+ * says why; never a 0 that reads as "nothing happened".
+ */
+export function proofCopy(p) {
+  const read = !!p && (!!p.snapshot || (p.paidCalls?.count ?? 0) > 0 || (p.wif?.count ?? 0) > 0 || (p.escrows?.count ?? 0) > 0);
+  if (!read) {
+    return {
+      read: false,
+      calls: "—",
+      usdg: "—",
+      wif: "—",
+      wifSub: "cashback and worker rewards",
+      escrows: "—",
+      escrowSub: "through Execution Market",
+      note: p ? "Nothing on chain to show for this server yet: no dated read for its wallet, and no call settled since it started." : "The transactions could not be read right now.",
+    };
+  }
+  const since = p.serverSince ? utcDate(p.serverSince) : null;
+  const note = p.snapshot
+    ? `Read on Robinhood Chain on ${utcDate(p.snapshot.readAt)} (block ${Number(p.snapshot.block).toLocaleString("en-US")}), plus every call this server settled since ${since}. Up to that read, every payer was a wallet of the team.`
+    : `Every call this server settled since ${since}.`;
+  return {
+    read: true,
+    calls: String(p.paidCalls.count),
+    usdg: usdg(p.paidCalls.amount),
+    wif: plain(p.wif.amount),
+    wifSub: `${p.wif.cashback.count} cashback · ${p.wif.rewards.count} to workers`,
+    escrows: String(p.escrows.count),
+    escrowSub: p.escrows.count ? `${usdg(p.escrows.amount)} USDG escrowed, then released` : "through Execution Market",
+    note,
+  };
+}
+
 /** what the page says while a server that hires through Execution Market is not taking hires, when it sends no reason */
 export const PAUSED_FALLBACK = "this server is not taking hires right now.";
 

@@ -1,0 +1,149 @@
+{
+ "what": "The KarmaKadabra swarm's later tasks on Execution Market on Robinhood Chain, after the two in docs/evidence/robinhood-2026-11-12.json: one agent of the swarm locks 0.01 USDG in Execution Market's escrow and the agent that delivered is paid 0.0087 USDG out of it (0.0013 is Execution Market's fee). Flat Fee is not a party to them. Task ids, titles and the agents' names are as Execution Market's public API gave them (GET /api/v1/tasks/<id>, read by c0der on 12 Nov 2026); every transaction below was read on chain, with its block time. For c59942f9 only the payment transaction is recorded here.",
+ "read_at": "2026-11-12T17:22:00Z",
+ "sources": {
+  "robinhood_chain": "public JSON-RPC of Robinhood Chain mainnet (chain id 4663): eth_getTransactionReceipt, eth_getBlockByNumber",
+  "execution_market": "https://api.execution.market/api/v1/tasks/<id> (GET, unauthenticated), read by c0der",
+  "explorer": "https://robinhoodchain.blockscout.com/tx/<hash>"
+ },
+ "swarm_agents": {
+  "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1": "kk-0xyuls",
+  "0x5975442e9608f71cea6e9b1f3841b5a045e0500d": "kk-0xjokker",
+  "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48": "kk-coordinator",
+  "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b": "kk-trader"
+ },
+ "execution_market": {
+  "tasks": [
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "9dbd0d83-14da-4035-9382-010e7c1c7cb1",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+    "erc8004_agent_id": "23394",
+    "executor_kind": "autonomous_agent",
+    "escrow_status": "released",
+    "title": "[par-robinhood] Public task-board status summary for the day",
+    "escrow_tx": {
+     "tx": "0x454396fbd2a3910683962f4bc72f3b7d022a1d1c316364da1c4c6edf399ac9e7",
+     "status": 1,
+     "block": 112264635,
+     "at": "2026-11-12T04:45:01Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1", "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "amount": "0.01" },
+      { "token": "USDG", "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "amount": "0.01" }
+     ]
+    },
+    "payment_tx": {
+     "tx": "0xaaf67183278c6c69503c325aa63dceeec342c6a7e39e66984e1d6ced80a15820",
+     "status": 1,
+     "block": 112267308,
+     "at": "2026-11-12T04:49:51Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d", "amount": "0.0013" },
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48", "amount": "0.0087" }
+     ]
+    }
+   },
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "ee4ce5c0-e793-4eee-aaa3-4933135e339c",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+    "erc8004_agent_id": "23395",
+    "executor_kind": "autonomous_agent",
+    "escrow_status": "released",
+    "title": null,
+    "escrow_tx": {
+     "tx": "0xc2f1658c9e95bd52dc1cfcdbbf6a24db4432cefeb4af29158f690b092b875166",
+     "status": 1,
+     "block": 112265085,
+     "at": "2026-11-12T04:45:50Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d", "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "amount": "0.01" },
+      { "token": "USDG", "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "amount": "0.01" }
+     ]
+    },
+    "payment_tx": {
+     "tx": "0x1c46c8bd721a37fc4b9156fc1dc575ab10b85811061a24f70436425ecf82a750",
+     "status": 1,
+     "block": 112267750,
+     "at": "2026-11-12T04:50:40Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d", "amount": "0.0013" },
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b", "amount": "0.0087" }
+     ]
+    }
+   },
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "c59942f9-eaa0-4396-953c-726a619dfeb9",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+    "erc8004_agent_id": "23395",
+    "executor_kind": "autonomous_agent",
+    "escrow_status": "released",
+    "title": null,
+    "escrow_tx": null,
+    "payment_tx": {
+     "tx": "0x0d8656e0fa329386368e3784a91fa7126659a085865c7904eef7cb938e261942",
+     "status": 1,
+     "block": 112281647,
+     "at": "2026-11-12T05:15:45Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d", "amount": "0.0013" },
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b", "amount": "0.0087" }
+     ]
+    }
+   },
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "c6942ceb-3ad9-4826-be54-81be3ddd3a4e",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+    "erc8004_agent_id": "23394",
+    "executor_kind": "autonomous_agent",
+    "escrow_status": "released",
+    "title": null,
+    "escrow_tx": {
+     "tx": "0x2c98953264be73141bc833800b48a3d094b92bda39ec6562d8101f1da42e35a9",
+     "status": 1,
+     "block": 112633071,
+     "at": "2026-11-12T15:28:41Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1", "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "amount": "0.01" },
+      { "token": "USDG", "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757", "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "amount": "0.01" }
+     ]
+    },
+    "payment_tx": {
+     "tx": "0xea617d68b87e74f4401777b5d36ab309bd46e78fcf2cf5ec4e2c6a6ec4e70082",
+     "status": 1,
+     "block": 112680591,
+     "at": "2026-11-12T16:49:10Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d", "amount": "0.0013" },
+      { "token": "USDG", "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b", "to": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b", "amount": "0.0087" }
+     ]
+    }
+   }
+  ]
+ }
+}

@@ -4,44 +4,114 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Flat Fee</title>
-  <meta name="description" content="Hire a human for a small task for one flat USDG fee on Robinhood Chain, paid over x402." />
+  <meta name="description" content="Flat Fee is a pay-per-call storefront on Robinhood Chain: sign one flat USDG payment over x402 to ask an AI agent or hire a human, with $WIF back." />
+  <meta name="theme-color" content="#0f1412" />
   <link rel="icon" href="/logo.png" />
   <!-- ?v= so a browser that cached the previous page's files does not pair them with this markup -->
-  <link rel="stylesheet" href="/style.css?v=3" />
+  <link rel="stylesheet" href="/style.css?v=4" />
 </head>
 <!-- The static text is the escrow-OFF state (Flat Fee's own task board). app.js switches to escrow ON only when
      /api/info says hire.via = "execution-market" (EM_HIRE=on) and hire.available = true, and to PAUSED, with the
      server's reason, when it says false; the strings come from page-state.js. Amounts stay "…" and lines that need a
-     value stay hidden until /api/info sends it. -->
+     value stay hidden until /api/info sends it. Every figure under "Proof" comes from GET /api/proof (src/proof.ts):
+     the dated reads on chain in docs/evidence plus what this server settled since it started, each with its tx. -->
 <body data-escrow="off">
-  <div class="wrap">
-    <header class="bar">
-      <a class="brand" href="/"><img src="/logo.png" alt="" width="30" height="30" />Flat Fee</a>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="/"><img src="/logo.png" alt="" width="28" height="28" />Flat Fee</a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#try">Try it</a>
+        <a href="#proof">Proof</a>
+        <a href="#stack">Built on</a>
+        <a href="#dev">Developers</a>
+        <a href="https://github.com/0xultravioleta/worldisflat-x402">GitHub</a>
+      </nav>
       <span class="chain">USDG on <span data-info="network.label">Robinhood Chain</span></span>
-    </header>
-    <p class="notice-fork" id="fork-notice" hidden>Local fork: a wallet signature here would be valid on mainnet, so wallet payments are off. Claim and complete the demo task on the task board below.</p>
+    </div>
+  </header>
 
-    <main>
-      <section class="hero" aria-labelledby="h">
-        <h1 id="h">Hire a human for a small task.</h1>
-        <p class="sub">One flat fee in USDG. No account, no card.</p>
+  <main>
+    <div class="wrap">
+      <p class="notice-fork" id="fork-notice" hidden>Local fork: a wallet signature here would be valid on mainnet, so wallet payments are off. Claim and complete the demo task on the task board below.</p>
+    </div>
 
-        <div class="grid">
-          <section class="form" id="hire" aria-label="Hire a human">
-            <div class="label-row">
-              <label for="request">Your task</label>
-              <span class="hint" id="request-hint">max 500 characters</span>
-            </div>
-            <textarea id="request" rows="2" maxlength="500" aria-describedby="request-hint">Check that the cafe on 5th street is open and reply in text with today's hours.</textarea>
-            <button class="pay" id="hire-pay" type="button">Pay <span data-usdg="prices.hire.standard">…</span> USDG and hire</button>
-            <p class="meta">No gas, no refunds<span data-needs="wif.token" hidden> · $WIF holders (<span data-info="wif.holderMin">…</span>+) pay <span data-usdg="prices.hire.holder">…</span></span></p>
-            <pre class="out" id="hire-out" hidden></pre>
-            <p class="status" id="hire-status" role="status"><span><b id="hire-status-label">Today, without escrow:</b> <span id="hire-status-text">your task goes on the task board below, for a person to answer.</span></span></p>
-          </section>
+    <section class="hero wrap" aria-labelledby="h">
+      <p class="eyebrow">Pay per call · USDG · $WIF · Robinhood Chain</p>
+      <h1 id="h">One flat fee. One signature. <span class="dim">An agent answers, or a human does the task.</span></h1>
+      <p class="sub">Flat Fee is a pay-per-call storefront on Robinhood Chain: sign one flat USDG payment to ask an AI agent or hire a human. No account, no API key, no gas<span data-needs="wif.cashback" hidden>, and <span data-info="wif.cashback">…</span> $WIF back on every paid call, up to a daily budget</span>.</p>
+      <div class="doors">
+        <a class="door primary" href="#ask">
+          <span class="door-k">Ask an agent</span>
+          <span class="door-p"><span data-usdg="prices.ask.standard">…</span> <small>USDG</small></span>
+          <span class="door-m">An answer read from Robinhood Chain, in seconds →</span>
+        </a>
+        <a class="door" href="#hire">
+          <span class="door-k">Hire a human</span>
+          <span class="door-p"><span data-usdg="prices.hire.standard">…</span> <small>USDG</small></span>
+          <span class="door-m">A small task, answered in text by a person →</span>
+        </a>
+      </div>
+      <p class="quick"><a href="#ask">See the 402 first: free, no wallet</a><span aria-hidden="true"> · </span><a href="#video">Watch the demo</a></p>
+    </section>
 
-          <aside class="strip" id="escrow" aria-labelledby="how">
-            <span class="pill" id="escrow-pill">Off on this demo</span>
-            <h2 id="how"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>How hiring with escrow works</h2>
+    <section class="proof wrap" id="proof" aria-labelledby="proof-h">
+      <div class="sec-head">
+        <h2 class="eyebrow" id="proof-h">On Robinhood Chain · every figure is a transaction</h2>
+        <a class="mono-link" id="proof-merchant" href="https://robinhoodchain.blockscout.com">merchant wallet ↗</a>
+      </div>
+      <div class="stats">
+        <a class="stat" id="stat-calls" href="#txs"><span class="n">…</span><span class="l">paid calls settled</span><span class="s">x402, USDG</span></a>
+        <a class="stat" id="stat-usdg" href="#txs"><span class="n">…</span><span class="l">USDG settled</span><span class="s">into the merchant</span></a>
+        <a class="stat" id="stat-wif" href="#txs" data-needs="wif.token" hidden><span class="n">…</span><span class="l">$WIF paid out</span><span class="s">cashback and worker rewards</span></a>
+        <a class="stat" id="stat-escrow" href="#work"><span class="n">…</span><span class="l">hires paid from escrow</span><span class="s">through Execution Market</span></a>
+      </div>
+      <p class="proof-note" id="proof-note" role="status">Reading the transactions…</p>
+      <details id="txs">
+        <summary><span class="t">Every transaction behind these figures</span><span class="m">opens Blockscout</span></summary>
+        <div class="panel"><ul class="txs" id="tx-list"><li class="empty">Reading…</li></ul></div>
+      </details>
+    </section>
+
+    <section class="how wrap" aria-labelledby="how-h">
+      <p class="eyebrow">How a call is paid</p>
+      <h2 class="h2" id="how-h">Three steps, one signature</h2>
+      <ol class="three">
+        <li><span class="k">01 · 402</span><h3>Get a price</h3><p>The endpoint answers 402 Payment Required with one flat price in USDG.</p></li>
+        <li><span class="k">02 · Sign</span><h3>Sign once</h3><p>A wallet or an agent signs one EIP-3009 authorization. No gas, no approve, no account.</p></li>
+        <li><span class="k">03 · Settle</span><h3>Settled on chain</h3><p>Ultravioleta's x402 facilitator settles it on Robinhood Chain and pays the gas, and the call is served<span data-needs="wif.cashback" hidden> with $WIF back</span>.</p></li>
+      </ol>
+    </section>
+
+    <section class="try wrap" id="try" aria-labelledby="try-h">
+      <p class="eyebrow">Try it</p>
+      <h2 class="h2" id="try-h">Ask an agent, hire a human, or earn as a worker</h2>
+      <div class="cards">
+        <section class="card" id="ask" aria-labelledby="ask-h">
+          <p class="chip mint">Agent</p>
+          <h3 id="ask-h">Ask an agent</h3>
+          <p class="card-sub">Balances of an address, the latest block and gas, $WIF, or which x402 schemes settle here.</p>
+          <div class="field"><label for="question">Your question</label>
+            <textarea id="question" rows="2" maxlength="500">What is the latest block and gas on the chain?</textarea></div>
+          <button class="pay ask" id="ask-pay" type="button">Pay <span data-usdg="prices.ask.standard">…</span> USDG and ask</button>
+          <button class="btn wide" id="ask-quote" type="button">See the 402 (free, no wallet)</button>
+          <p class="fine">$WIF holders (<span data-info="wif.holderMin">…</span>+) who name their wallet pay <span data-usdg="prices.ask.holder">…</span></p>
+          <pre class="out" id="ask-out" hidden></pre>
+        </section>
+
+        <section class="card" id="hire" aria-label="Hire a human">
+          <p class="chip"><span class="pill" id="escrow-pill">Off on this demo</span></p>
+          <h3 id="hire-h">Hire a human</h3>
+          <div class="label-row">
+            <label for="request">Your task</label>
+            <span class="hint" id="request-hint">max 500 characters</span>
+          </div>
+          <textarea id="request" rows="2" maxlength="500" aria-describedby="request-hint">Check that the cafe on 5th street is open and reply in text with today's hours.</textarea>
+          <button class="pay" id="hire-pay" type="button">Pay <span data-usdg="prices.hire.standard">…</span> USDG and hire</button>
+          <p class="meta">No gas, no refunds<span data-needs="wif.token" hidden> · $WIF holders (<span data-info="wif.holderMin">…</span>+) pay <span data-usdg="prices.hire.holder">…</span></span></p>
+          <pre class="out" id="hire-out" hidden></pre>
+          <p class="status" id="hire-status" role="status"><span><b id="hire-status-label">Today, without escrow:</b> <span id="hire-status-text">your task goes on the task board below, for a person to answer.</span></span></p>
+          <div class="strip" id="escrow">
+            <h4 id="how"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>How hiring with escrow works</h4>
             <ol class="steps">
               <li><p>You pay <strong>the flat fee</strong> up front.</p></li>
               <li><p>A person takes it on Execution Market.</p></li>
@@ -50,90 +120,149 @@
             </ol>
             <p class="strip-note" id="escrow-expiry" hidden></p>
             <p class="strip-foot" id="escrow-foot">Waiting for Execution Market's escrow on Robinhood Chain.</p>
-          </aside>
+          </div>
+        </section>
+
+        <section class="card" id="earn" aria-labelledby="earn-h">
+          <p class="chip">Worker</p>
+          <h3 id="earn-h">Earn as a worker</h3>
+          <p class="card-sub em-only">Flat Fee publishes each hire on Execution Market. Take one there and answer it in text: the worker's pay is locked in USDG escrow when you are assigned, and released when Flat Fee approves the answer<span data-needs="wif.workerReward" hidden>, plus <span data-info="wif.workerReward">…</span> $WIF from Flat Fee</span>.</p>
+          <a class="btn wide em-only" href="https://execution.market">Find tasks on Execution Market ↗</a>
+          <details id="board">
+            <summary><span class="t">Task board</span><span class="m" id="board-meta">for workers: claim and answer</span></summary>
+            <div class="panel">
+              <p><span id="board-how">Workers: enter your wallet and worker token, claim a task, send the answer.</span><span data-needs="wif.workerReward" hidden> Completed tasks earn <strong><span data-info="wif.workerReward">…</span>&nbsp;$WIF</strong>, up to a daily budget.</span></p>
+              <div class="row">
+                <div class="field"><label for="worker">Your wallet</label><input id="worker" placeholder="0x…" autocomplete="off" spellcheck="false" /></div>
+                <div class="field"><label for="worker-token">Worker token</label><input id="worker-token" type="password" autocomplete="off" /></div>
+              </div>
+              <ul class="tasks" id="tasks"><li class="empty">Loading…</li></ul>
+            </div>
+          </details>
+        </section>
+      </div>
+    </section>
+
+    <section class="work-sec wrap" id="work-sec" aria-labelledby="work-h">
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">Paid out of escrow on Robinhood Chain</p>
+          <h2 class="h2" id="work-h">Hires and agent-to-agent tasks, with their transactions</h2>
         </div>
-      </section>
+        <p class="sec-meta" id="work-meta"></p>
+      </div>
+      <ul class="work" id="work"><li class="empty">Reading…</li></ul>
+    </section>
 
-      <section class="more" aria-labelledby="more">
-        <h2 class="more-title" id="more">Everything else</h2>
+    <section class="wif wrap" id="wif" aria-labelledby="wif-h" data-needs="wif.token" hidden>
+      <p class="eyebrow">$WIF in the loop</p>
+      <h2 class="h2" id="wif-h">Pay, get $WIF back, pay half</h2>
+      <div class="loop">
+        <p data-needs="wif.cashback" hidden><strong>Cashback:</strong> each paid call sends <span data-info="wif.cashback">…</span> $WIF to the payer, while the day's budget lasts.</p>
+        <p><strong>Holder price:</strong> hold <span data-info="wif.holderMin">…</span>+ $WIF and pay <span data-usdg="prices.ask.holder">…</span> USDG to ask, <span data-usdg="prices.hire.holder">…</span> to hire.</p>
+        <p data-needs="wif.workerReward" hidden><strong>Workers:</strong> <span data-info="wif.workerReward">…</span> $WIF for each completed task, from the same daily budget.</p>
+      </div>
+      <p class="fine">The holder price is checked on chain against the wallet that signs the payment, so a header cannot fake it.</p>
+    </section>
 
-        <details id="board">
-          <summary><span class="t">Task board</span><span class="m" id="board-meta">for workers: claim and answer</span></summary>
-          <div class="panel">
-            <p><span id="board-how">Workers: enter your wallet and worker token, claim a task, send the answer.</span><span data-needs="wif.workerReward" hidden> Completed tasks earn <strong><span data-info="wif.workerReward">…</span>&nbsp;$WIF</strong>, up to a daily budget.</span></p>
-            <div class="row">
-              <div class="field"><label for="worker">Your wallet</label><input id="worker" placeholder="0x…" autocomplete="off" spellcheck="false" /></div>
-              <div class="field"><label for="worker-token">Worker token</label><input id="worker-token" type="password" autocomplete="off" /></div>
-            </div>
-            <ul class="tasks" id="tasks"><li class="empty">Loading…</li></ul>
-          </div>
-        </details>
+    <section class="stack wrap" id="stack" aria-labelledby="stack-h">
+      <p class="eyebrow">Built on</p>
+      <h2 class="h2" id="stack-h">What Flat Fee runs on: Ultravioleta DAO's open stack</h2>
+      <ul class="stack-cards">
+        <li><p class="k">x402 · facilitator</p><h3>Ultravioleta's x402 facilitator</h3><p>Settles each USDG payment on Robinhood Chain and pays the gas.</p><a href="https://facilitator.ultravioletadao.xyz/supported">facilitator.ultravioletadao.xyz ↗</a></li>
+        <li><p class="k">SDK · npm</p><h3>uvd-x402-sdk</h3><p>The public package behind Flat Fee's 402 paywall and the buyer's payment header.</p><a href="https://www.npmjs.com/package/uvd-x402-sdk">npm ↗</a></li>
+        <li><p class="k">Market · escrow</p><h3>Execution Market</h3><p>Where Flat Fee hires people, with the worker's pay in USDG escrow on Robinhood Chain.</p><a href="https://execution.market/tasks/d161b088-ae87-44df-8ed3-5af09018c779">a Flat Fee task there ↗</a></li>
+        <li><p class="k">Identity · ERC-8004</p><h3>An agent identity</h3><p>Flat Fee's merchant is agent 22487 on Robinhood Chain and agent 1170265 on Base. Execution Market writes no ratings on Robinhood Chain yet.</p><a href="https://robinhoodchain.blockscout.com/token/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432/instance/22487">agent 22487 ↗</a></li>
+        <li><p class="k">Agents · swarm</p><h3>KarmaKadabra</h3><p>Our swarm of AI agents hires on the same market, agent to agent, paid out of escrow. Flat Fee is not a party to those tasks.</p><a href="https://karmakadabra.ultravioletadao.xyz">karmakadabra ↗</a></li>
+      </ul>
+    </section>
 
-        <details id="ask">
-          <summary><span class="t">Ask the agent instead</span><span class="m"><span data-usdg="prices.ask.standard">…</span> USDG · answers from the chain</span></summary>
-          <div class="panel">
-            <p>Balances of an address, the latest block and gas, $WIF, or which x402 schemes settle here.</p>
-            <div class="field"><label for="question">Your question</label>
-              <textarea id="question" rows="2" maxlength="500">What is the latest block and gas on the chain?</textarea></div>
-            <div class="row">
-              <button class="btn strong" id="ask-pay" type="button">Pay <span data-usdg="prices.ask.standard">…</span> USDG and ask</button>
-              <button class="btn" id="ask-quote" type="button">See the 402</button>
-            </div>
-            <pre class="out" id="ask-out" hidden></pre>
-          </div>
-        </details>
+    <section class="limits wrap" aria-labelledby="limits-h">
+      <p class="eyebrow">Read it straight</p>
+      <h2 class="h2" id="limits-h">What the chain shows, and what it does not</h2>
+      <div class="two">
+        <div>
+          <h3>Shows</h3>
+          <ul>
+            <li>Each paid call: the USDG into the merchant, in a transaction the facilitator submitted.</li>
+            <li>Each $WIF transfer out of the merchant, cashback and worker rewards.</li>
+            <li>Each hire's escrow: the worker's pay locked, then released by Execution Market.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Does not</h3>
+          <ul>
+            <li>Customers: up to the dated read, every payer was a wallet of the team.</li>
+            <li>A person on the two hires: their worker is a test wallet of the team run by a script.</li>
+            <li>Ratings: the identities are on Robinhood Chain; the ratings are not, yet.</li>
+            <li>A judge of the answer: the demo approves any text answer from the worker it assigned, and caps the $WIF it sends per day.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
 
-        <details id="calls">
-          <summary><span class="t">Paid calls</span><span class="m">every row settled on chain</span></summary>
-          <div class="panel">
-            <div role="table" aria-label="Paid calls">
-              <div class="ledger-head" role="row"><span role="columnheader">when</span><span role="columnheader">call</span><span role="columnheader">payer</span><span role="columnheader">paid</span><span role="columnheader">settlement</span><span role="columnheader">$WIF back</span></div>
-              <ul class="ledger" id="ledger" role="rowgroup"><li class="empty" role="row"><span role="cell">Loading…</span></li></ul>
-            </div>
-          </div>
-        </details>
+    <section class="video-sec wrap" id="video" aria-labelledby="video-h">
+      <p class="eyebrow">Demo</p>
+      <h2 class="h2" id="video-h">See it run end to end</h2>
+      <div class="video" id="video-box">
+        <button class="video-play" id="video-play" type="button" data-video="flFFz-lHdw4" aria-label="Play the demo video (loads YouTube)">
+          <span class="play" aria-hidden="true"></span>
+          <span class="video-label">Flat Fee, end to end on Robinhood Chain</span>
+        </button>
+      </div>
+      <p class="fine">Nothing loads from YouTube until you press play. <a href="https://youtu.be/flFFz-lHdw4">Open on YouTube ↗</a></p>
+    </section>
 
-        <details id="wif" data-needs="wif.token" hidden>
-          <summary><span class="t">$WIF</span><span class="m"><span data-needs="wif.cashback" hidden>cashback · </span>holder price</span></summary>
-          <div class="panel">
-            <p data-needs="wif.cashback" hidden><strong>Cashback:</strong> each paid call sends <span data-info="wif.cashback">…</span> $WIF to the payer, while the day's budget lasts.</p>
-            <p><strong>Holder price:</strong> hold <span data-info="wif.holderMin">…</span>+ $WIF and pay <span data-usdg="prices.ask.holder">…</span> USDG to ask, <span data-usdg="prices.hire.holder">…</span> to hire.</p>
-            <p data-needs="wif.workerReward" hidden><strong>Workers:</strong> <span data-info="wif.workerReward">…</span> $WIF for each completed task, from the same daily budget.</p>
-          </div>
-        </details>
-
-        <details id="dev">
-          <summary><span class="t">For agents and developers</span><span class="m">x402 · curl · network</span></summary>
-          <div class="panel">
-            <p>Any agent can pay. This returns <strong>402 Payment Required</strong> with the USDG terms:</p>
-<pre class="code">curl -i -X POST <span data-origin>&lt;origin&gt;</span>/api/ask \
+    <section class="dev wrap" id="dev" aria-labelledby="dev-h">
+      <p class="eyebrow">For agents and developers</p>
+      <h2 class="h2" id="dev-h">Any agent can pay: x402, curl, one signature</h2>
+      <div class="dev-grid">
+        <div>
+          <p class="card-sub">This returns <strong>402 Payment Required</strong> with the USDG terms:</p>
+<pre class="code" id="curl">curl -i -X POST <span data-origin>&lt;origin&gt;</span>/api/ask \
   -H 'content-type: application/json' \
   -d '{"question":"latest block?"}'</pre>
+          <button class="btn" id="copy-curl" type="button">Copy</button>
 <pre class="code"><span class="c"># from a clone of the repo: signs, pays, prints the answer and the tx</span>
 npm run buy -- "latest block?"</pre>
-            <ol class="flow">
-              <li>The endpoint answers 402 with the price in USDG.</li>
-              <li>The wallet or agent signs one EIP-3009 authorization. No gas, no approve.</li>
-              <li>Ultravioleta's open-source x402 facilitator settles it on chain.</li>
-              <li>The call is served.</li>
-            </ol>
-            <p>This page sends your wallet address (<code>X-Payer</code>) before the 402, so the server can quote the holder price.</p>
-            <dl class="facts" id="facts">
-              <dt>Network</dt><dd>…</dd>
-              <dt>Paid to</dt><dd>…</dd>
-              <dt>Facilitator</dt><dd>…</dd>
-            </dl>
+          <p class="fine">This page sends your wallet address (<code>X-Payer</code>) before the 402, so the server can quote the holder price.</p>
+        </div>
+        <div>
+          <ol class="flow">
+            <li>The endpoint answers 402 with the price in USDG.</li>
+            <li>The wallet or agent signs one EIP-3009 authorization. No gas, no approve.</li>
+            <li>Ultravioleta's open-source x402 facilitator settles it on chain.</li>
+            <li>The call is served.</li>
+          </ol>
+          <dl class="facts" id="facts">
+            <dt>Network</dt><dd>…</dd>
+            <dt>Paid to</dt><dd>…</dd>
+            <dt>Facilitator</dt><dd>…</dd>
+          </dl>
+        </div>
+      </div>
+      <details id="calls">
+        <summary><span class="t">Paid calls on this server</span><span class="m">since it started · every row settled on chain</span></summary>
+        <div class="panel">
+          <div role="table" aria-label="Paid calls">
+            <div class="ledger-head" role="row"><span role="columnheader">when</span><span role="columnheader">call</span><span role="columnheader">payer</span><span role="columnheader">paid</span><span role="columnheader">settlement</span><span role="columnheader">$WIF back</span></div>
+            <ul class="ledger" id="ledger" role="rowgroup"><li class="empty" role="row"><span role="cell">Loading…</span></li></ul>
           </div>
-        </details>
-      </section>
-    </main>
-  </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="close wrap" aria-labelledby="close-h">
+      <h2 id="close-h">Ask once. Pay once. <span class="dim">Read the tx.</span></h2>
+      <div class="close-actions"><a class="btn lime" href="#ask">Ask an agent</a><a class="btn" href="#hire">Hire a human</a></div>
+    </section>
+  </main>
 
   <footer class="wrap foot">
     <p>Built by Ultravioleta DAO for the world is flat hackathon. Open source, MIT. Flat Fee is not affiliated with, endorsed by,
       or officially connected with Robinhood Markets, Inc.</p>
     <p><a href="https://github.com/0xultravioleta/worldisflat-x402">github.com/0xultravioleta/worldisflat-x402</a></p>
   </footer>
-  <script type="module" src="/app.js?v=3"></script>
+  <script type="module" src="/app.js?v=4"></script>
 </body>
 </html>

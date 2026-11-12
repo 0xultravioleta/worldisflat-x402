@@ -1,0 +1,640 @@
+{
+ "what": "Public reads behind the 12 Nov 2026 edit of SUBMISSION.md: every USDG and $WIF transfer of Flat Fee's merchant wallet on Robinhood Chain mainnet, the ERC-8004 identities and ratings of the parties to its hires and to the KarmaKadabra swarm's tasks there, and Execution Market's public records of those tasks.",
+ "read_at": "2026-11-12T03:14:35Z",
+ "sources": {
+  "robinhood_chain": "public JSON-RPC of Robinhood Chain mainnet (chain id 4663): eth_getLogs, eth_getTransactionReceipt, eth_call",
+  "base": "public JSON-RPC of Base mainnet (chain id 8453): eth_call",
+  "execution_market": "https://api.execution.market/api/v1 (GET, unauthenticated)",
+  "karmakadabra": "https://karmakadabra.ultravioletadao.xyz/graph.json",
+  "explorer": "https://robinhoodchain.blockscout.com/tx/<hash>"
+ },
+ "merchant": "0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6",
+ "facilitator": "0x103040545AC5031A11E8C03dd11324C7333a13C7",
+ "merchant_transfers": {
+  "from_block": 101000000,
+  "to_block": 112214177,
+  "items": [
+   {
+    "block": 103875528,
+    "token": "USDG",
+    "from": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "to": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "amount": "0.05",
+    "tx": "0x432e381183277e5f6b485adb0e4ff2cb072b59b38c80246c1b21efa99c446f33",
+    "at": "2026-11-02T02:38:27Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 103875599,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "amount": "10",
+    "tx": "0xb0f3433c98ec074ce3dff3fb2d567dd2fe63d7ba291425dc6e36d81de181f640",
+    "at": "2026-11-02T02:38:34Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   },
+   {
+    "block": 108625144,
+    "token": "USDG",
+    "from": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "to": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "amount": "0.25",
+    "tx": "0xffea67a1b62bfc374682ca3a36e19fb9be7c4997e3c53a8937024f10bdcedd54",
+    "at": "2026-11-07T18:47:34Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 108625217,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "amount": "10",
+    "tx": "0xf4318a5ef5871332a7b029e66f3315cc161e1ffe03267c1ad04662546cad030a",
+    "at": "2026-11-07T18:47:41Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   },
+   {
+    "block": 108625764,
+    "token": "USDG",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+    "amount": "0.2",
+    "tx": "0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9",
+    "at": "2026-11-07T18:48:38Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 108626693,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+    "amount": "50",
+    "tx": "0xde1aa451397d68bfa3a1e12ad0a57cadb60dc3c36a8d316bd5a7decbc37fade6",
+    "at": "2026-11-07T18:50:15Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   },
+   {
+    "block": 108670482,
+    "token": "USDG",
+    "from": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "to": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "amount": "0.05",
+    "tx": "0x5fe7d69d3d5ce44649d644bb25174a366d71da0069accf0b82a214e80f082213",
+    "at": "2026-11-07T20:07:41Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 108670485,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "amount": "10",
+    "tx": "0xc3c5d09e7f06e06ec1a0936ca928ffa72a28efbb2762c2b92841548ec4143367",
+    "at": "2026-11-07T20:07:42Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   },
+   {
+    "block": 109419716,
+    "token": "USDG",
+    "from": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "to": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "amount": "0.25",
+    "tx": "0xf710dc423f7108a9bc94c40510f9d822c2c34afa764e2ad18f89c4ccbfc8da03",
+    "at": "2026-11-08T18:05:43Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 109419720,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x6ce9da69a46842dce90e6a14382ed06eb1c46af5",
+    "amount": "10",
+    "tx": "0x19a3e6643cb0f0a6a01b3bccf11fabdae9fd7ce63ecb257fdcba08c1f58b01d6",
+    "at": "2026-11-08T18:05:43Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   },
+   {
+    "block": 109420033,
+    "token": "USDG",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+    "amount": "0.2",
+    "tx": "0x74525b5e060e0df0763421a8a2ba265fc2959490b03f61202ec1154c89fe8bab",
+    "at": "2026-11-08T18:06:16Z",
+    "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7"
+   },
+   {
+    "block": 109420683,
+    "token": "$WIF",
+    "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "to": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+    "amount": "50",
+    "tx": "0xe2086ab4a8d6ae2c8a4381d2aaa6acfbc5a8928d795b722876d89d17667a2a2f",
+    "at": "2026-11-08T18:07:23Z",
+    "sender": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+   }
+  ],
+  "left_out": {
+   "count": 2,
+   "tokens": [
+    "$WIF",
+    "USDG"
+   ],
+   "why": "transfers into the merchant that no x402 settlement made (the facilitator did not submit them): the merchant's own funding, not sales; their senders are left out of this public file"
+  },
+  "merchant_nonce": 6
+ },
+ "erc8004": {
+  "identity_registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+  "reputation_registry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+  "parties": [
+   {
+    "role": "Flat Fee's merchant",
+    "wallet": "0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6",
+    "robinhood": {
+     "agent_id": 22487,
+     "owner": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0x17a5b782dff1cee05d86d2f7631eee9fca71594e68eeafa8d9651282873db0b8",
+       "block": 108625226,
+       "at": "2026-11-07T18:47:42Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+       "tx": "0x0508b6705a7ceb3bec6f1bb8bc4c52ccdff1d090275d32b19cc35243e6274ae8",
+       "block": 108625295,
+       "at": "2026-11-07T18:47:49Z"
+      }
+     ]
+    },
+    "base": {
+     "agent_id": 1170265,
+     "owner": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+     "ratings_clients": 0
+    }
+   },
+   {
+    "role": "Flat Fee's test worker (a team wallet, not a person)",
+    "wallet": "0xa329b5FB85cf76E1d235711AFc096B76374271c7",
+    "robinhood": {
+     "agent_id": 22488,
+     "owner": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0xdc56a7b29a73878520c8dbfaa174cd829d073d1ff6b6dd118b3fb91cfad2c775",
+       "block": 108625377,
+       "at": "2026-11-07T18:47:58Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+       "tx": "0xd124f77157eeacc96a414a83c9e30b81b1025034d7e190e7469348172e7df204",
+       "block": 108625445,
+       "at": "2026-11-07T18:48:05Z"
+      }
+     ]
+    }
+   },
+   {
+    "role": "swarm buyer of task 3f8c7506",
+    "wallet": "0xFa1c6fF4edE5a8290B292f40bB7AD0FbCb1C65d1",
+    "robinhood": {
+     "agent_id": 23394,
+     "owner": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0x63f9a0d50f574d58f4ded5d94afa25280929c6198e0268828bb0a666c15a4bcf",
+       "block": 111487378,
+       "at": "2026-11-11T06:09:22Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+       "tx": "0x905c90d9417d123a80a7280b61bcb02555cc8b0f1de87e45b04f9d92df62efe5",
+       "block": 111487380,
+       "at": "2026-11-11T06:09:22Z"
+      }
+     ]
+    },
+    "base": {
+     "agent_id": 18897,
+     "owner": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+     "ratings_clients": 18
+    }
+   },
+   {
+    "role": "swarm buyer of task c03d5028",
+    "wallet": "0x5975442E9608f71cEA6e9b1f3841b5A045e0500d",
+    "robinhood": {
+     "agent_id": 23395,
+     "owner": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0x64cd9b66d4497ffe04160c17e6a9b2729583ff00f3dc4f97f1f314b4e55fb65c",
+       "block": 111487756,
+       "at": "2026-11-11T06:10:02Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+       "tx": "0x6d17123d6e5861659c803c1627e2e590a98e46a0210ff728a53ba6ef135e0adc",
+       "block": 111487758,
+       "at": "2026-11-11T06:10:02Z"
+      }
+     ]
+    },
+    "base": {
+     "agent_id": 18815,
+     "owner": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+     "ratings_clients": 26
+    }
+   },
+   {
+    "role": "swarm worker of task 3f8c7506 (kk-coordinator)",
+    "wallet": "0xE66C0A519F4B4Bef94FC45447FDba5bF381cDD48",
+    "robinhood": {
+     "agent_id": 25419,
+     "owner": "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0xa856de0bb7d84cb59ad97e6ec1fd3fd343059306f3192e3c7b87b6d24497b159",
+       "block": 111653209,
+       "at": "2026-11-11T11:07:06Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48",
+       "tx": "0x5f8f5620faad6ee5d66552a0279568a771dfa8cc18ff87a5a2e538724e39d8b1",
+       "block": 111653211,
+       "at": "2026-11-11T11:07:06Z"
+      }
+     ]
+    },
+    "base": {
+     "agent_id": 18775,
+     "owner": "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48",
+     "ratings_clients": 3
+    }
+   },
+   {
+    "role": "swarm worker of task c03d5028 (kk-trader)",
+    "wallet": "0x7052cA449702e5ffafbE3dc63b74C7b7d8aF402B",
+    "robinhood": {
+     "agent_id": 25420,
+     "owner": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b",
+     "ratings_clients": 0,
+     "transfers": [
+      {
+       "from": "0x0000000000000000000000000000000000000000",
+       "to": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "tx": "0x44a0f8ad78057125d4e92872e53a368fb7ff3046d6a0cfaa77a8aecb4932fb9c",
+       "block": 111654013,
+       "at": "2026-11-11T11:08:28Z"
+      },
+      {
+       "from": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+       "to": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b",
+       "tx": "0x8efc606fac633abf344b517eee9b5363c4dfe51cd8929dbbd9beadbd00c16037",
+       "block": 111654015,
+       "at": "2026-11-11T11:08:28Z"
+      }
+     ]
+    },
+    "base": {
+     "agent_id": 59622,
+     "owner": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b",
+     "ratings_clients": 1
+    }
+   }
+  ]
+ },
+ "execution_market": {
+  "reputation_networks_robinhood": {
+   "network": "robinhood",
+   "chain_id": 4663,
+   "identity_registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+   "reputation_registry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+   "testnet": false,
+   "rater_authored_ratings": false,
+   "selectable_for_reputation": false,
+   "mints_missing_identity": false
+  },
+  "reputation_networks_base": {
+   "network": "base",
+   "chain_id": 8453,
+   "identity_registry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+   "reputation_registry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+   "testnet": false,
+   "rater_authored_ratings": true,
+   "selectable_for_reputation": true,
+   "mints_missing_identity": true
+  },
+  "merchant_registrations": {
+   "robinhood": {
+    "network": "robinhood",
+    "status": "registered",
+    "agent_id": 22487,
+    "message": "Identity already exists: Agent #22487"
+   },
+   "base": {
+    "network": "base",
+    "status": "registered",
+    "agent_id": 1170265,
+    "message": "Identity already exists: Agent #1170265"
+   }
+  },
+  "tasks": [
+   {
+    "what": "Flat Fee's hire of 7 Nov 2026 (npm run e2e:hire)",
+    "id": "3175424d-4f83-45cc-b871-92d9dcd3ffe3",
+    "record": "https://api.execution.market/api/v1/tasks/3175424d-4f83-45cc-b871-92d9dcd3ffe3",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.2,
+    "agent_id": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "erc8004_agent_id": "1170265",
+    "executor_id": "fa0bfe34-f0fa-4a52-ae40-81a134cbaab2",
+    "executor_kind": "human_via_agent",
+    "target_executor_type": "human",
+    "escrow_status": "released",
+    "created_at": "2026-11-07T18:47:52.875623Z",
+    "title": "Flat Fee: Flat Fee end-to-end test: reply with the text this task's test run asks for. Ple",
+    "escrow_tx": {
+     "tx": "0x4eae3196450ccbfff305bd9dbdd114005a8c37c0ed4d088c704b62231e1643d9",
+     "status": 1,
+     "block": 108625764,
+     "at": "2026-11-07T18:48:38Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+       "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "amount": "0.2"
+      },
+      {
+       "token": "USDG",
+       "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "amount": "0.2"
+      }
+     ],
+     "usdg_eip3009_authorizers": [
+      "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+     ]
+    },
+    "payment_tx": {
+     "tx": "0xe72bca30f5cf8c183525889de728d0799fe462f77164bba762858505b7bfe346",
+     "status": 1,
+     "block": 108626426,
+     "at": "2026-11-07T18:49:47Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d",
+       "amount": "0.026"
+      },
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+       "amount": "0.174"
+      }
+     ],
+     "usdg_eip3009_authorizers": []
+    }
+   },
+   {
+    "what": "Flat Fee's hire of 8 Nov 2026 (npm run e2e:hire)",
+    "id": "d161b088-ae87-44df-8ed3-5af09018c779",
+    "record": "https://api.execution.market/api/v1/tasks/d161b088-ae87-44df-8ed3-5af09018c779",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.2,
+    "agent_id": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+    "erc8004_agent_id": "22487",
+    "executor_id": "fa0bfe34-f0fa-4a52-ae40-81a134cbaab2",
+    "executor_kind": "human_via_agent",
+    "target_executor_type": "human",
+    "escrow_status": "released",
+    "created_at": "2026-11-08T18:05:45.090253Z",
+    "title": "Flat Fee: Flat Fee end-to-end test: reply with the text this task's test run asks for. Ple",
+    "escrow_tx": {
+     "tx": "0x74525b5e060e0df0763421a8a2ba265fc2959490b03f61202ec1154c89fe8bab",
+     "status": 1,
+     "block": 109420033,
+     "at": "2026-11-08T18:06:16Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6",
+       "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "amount": "0.2"
+      },
+      {
+       "token": "USDG",
+       "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "amount": "0.2"
+      }
+     ],
+     "usdg_eip3009_authorizers": [
+      "0xb9056196d3d00b4c09ec2e5e123e30b376d39cc6"
+     ]
+    },
+    "payment_tx": {
+     "tx": "0xb0053fcc8c33ee17b34eb3d898c541eef8f12170134da323ffbc2acde62dd68e",
+     "status": 1,
+     "block": 109420420,
+     "at": "2026-11-08T18:06:57Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d",
+       "amount": "0.026"
+      },
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0xa329b5fb85cf76e1d235711afc096b76374271c7",
+       "amount": "0.174"
+      }
+     ],
+     "usdg_eip3009_authorizers": []
+    }
+   },
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "3f8c7506-4069-4ee5-9306-de63b8224aec",
+    "record": "https://api.execution.market/api/v1/tasks/3f8c7506-4069-4ee5-9306-de63b8224aec",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+    "erc8004_agent_id": "23394",
+    "executor_id": "b210bb0b-da62-4613-a0f5-2dee04a4f2f8",
+    "executor_kind": "autonomous_agent",
+    "target_executor_type": "agent",
+    "escrow_status": "released",
+    "created_at": "2026-11-11T08:50:23.182674Z",
+    "title": "[par-robinhood] Summary of the public task-board state",
+    "escrow_tx": {
+     "tx": "0x6aa6cac797713a2f288772c68bcf7f499ac1b1a31a5fa17b64aa3314235836ec",
+     "status": 1,
+     "block": 111654941,
+     "at": "2026-11-11T11:10:03Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1",
+       "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "amount": "0.01"
+      },
+      {
+       "token": "USDG",
+       "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "amount": "0.01"
+      }
+     ],
+     "usdg_eip3009_authorizers": [
+      "0xfa1c6ff4ede5a8290b292f40bb7ad0fbcb1c65d1"
+     ]
+    },
+    "payment_tx": {
+     "tx": "0x37e1c21aeafe67de99c0d65f5a2272569f726faddc869a03d6113fe6670a77ec",
+     "status": 1,
+     "block": 112194470,
+     "at": "2026-11-12T02:40:03Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d",
+       "amount": "0.0013"
+      },
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0xe66c0a519f4b4bef94fc45447fdba5bf381cdd48",
+       "amount": "0.0087"
+      }
+     ],
+     "usdg_eip3009_authorizers": []
+    }
+   },
+   {
+    "what": "KarmaKadabra swarm: one agent hires another",
+    "id": "c03d5028-ff09-427e-b780-1329e8075bb8",
+    "record": "https://api.execution.market/api/v1/tasks/c03d5028-ff09-427e-b780-1329e8075bb8",
+    "status": "completed",
+    "payment_network": "robinhood",
+    "payment_token": "USDG",
+    "bounty_usd": 0.01,
+    "agent_id": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+    "erc8004_agent_id": "23395",
+    "executor_id": "1f600e3c-d4de-41af-8088-cc826f5027da",
+    "executor_kind": "autonomous_agent",
+    "target_executor_type": "agent",
+    "escrow_status": "released",
+    "created_at": "2026-11-11T08:50:59.550436Z",
+    "title": "[par-robinhood] Public price-reading check with source and timestamp",
+    "escrow_tx": {
+     "tx": "0xfe461c2b8edcd8aef91b3fb6b78845302d441a2ab7d128633e033ebae0d10ae9",
+     "status": 1,
+     "block": 111655069,
+     "at": "2026-11-11T11:10:15Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0x5975442e9608f71cea6e9b1f3841b5a045e0500d",
+       "to": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "amount": "0.01"
+      },
+      {
+       "token": "USDG",
+       "from": "0x0e3df9510de65469c4518d7843919c0b8c7a7757",
+       "to": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "amount": "0.01"
+      }
+     ],
+     "usdg_eip3009_authorizers": [
+      "0x5975442e9608f71cea6e9b1f3841b5a045e0500d"
+     ]
+    },
+    "payment_tx": {
+     "tx": "0x39b4c377018195e29002bfe08c80980f2428c7f3ab290e43916b882a3919c405",
+     "status": 1,
+     "block": 112195092,
+     "at": "2026-11-12T02:41:07Z",
+     "sender": "0x103040545ac5031a11e8c03dd11324c7333a13c7",
+     "transfers": [
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0x0258472a1410ac3ad720f1bc83f22b3c0af1fd9d",
+       "amount": "0.0013"
+      },
+      {
+       "token": "USDG",
+       "from": "0x9442581b3dc5a46bcb27419b68846c0cb1a3a86b",
+       "to": "0x7052ca449702e5ffafbe3dc63b74c7b7d8af402b",
+       "amount": "0.0087"
+      }
+     ],
+     "usdg_eip3009_authorizers": []
+    }
+   }
+  ]
+ },
+ "karmakadabra_graph": {
+  "source": "https://karmakadabra.ultravioletadao.xyz/graph.json",
+  "generated_at": "2026-11-12T02:32:26.520396+00:00",
+  "nodes": 34,
+  "tasks": [
+   {
+    "task": "3f8c7506-4069-4ee5-9306-de63b8224aec",
+    "buyer_wallet": "0xFa1c6fF4edE5a8290B292f40bB7AD0FbCb1C65d1",
+    "worker": "kk-coordinator",
+    "worker_wallet": "0xE66C0A519F4B4Bef94FC45447FDba5bF381cDD48",
+    "worker_executor_id": "b210bb0b-da62-4613-a0f5-2dee04a4f2f8"
+   },
+   {
+    "task": "c03d5028-ff09-427e-b780-1329e8075bb8",
+    "buyer_wallet": "0x5975442E9608f71cEA6e9b1f3841b5A045e0500d",
+    "worker": "kk-trader",
+    "worker_wallet": "0x7052cA449702e5ffafbE3dc63b74C7b7d8aF402B",
+    "worker_executor_id": "1f600e3c-d4de-41af-8088-cc826f5027da"
+   }
+  ]
+ }
+}

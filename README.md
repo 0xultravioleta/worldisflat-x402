@@ -115,13 +115,24 @@ transferred it to the merchant
 ([0xf79f…74a6](https://basescan.org/tx/0xf79f1e26efa7d1da49a7b46067200f7b93c4ef7a5b34041b3bb79c0e39fb74a6)).
 Execution Market's own public record of it:
 https://api.execution.market/api/v1/reputation/register/wallet/0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6?network=base
+On Robinhood Chain the merchant is agent **22487**, in the same ERC-8004 identity registry
+(`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`): on 7 Nov 2026 at 18:47 UTC, seconds before Flat Fee's first task there
+was published, the same facilitator minted it
+([0x17a5…b0b8](https://robinhoodchain.blockscout.com/tx/0x17a5b782dff1cee05d86d2f7631eee9fca71594e68eeafa8d9651282873db0b8))
+and transferred it to the merchant
+([0x0508…4ae8](https://robinhoodchain.blockscout.com/tx/0x0508b6705a7ceb3bec6f1bb8bc4c52ccdff1d090275d32b19cc35243e6274ae8)).
+Execution Market's record of it:
+https://api.execution.market/api/v1/reputation/register/wallet/0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6?network=robinhood
 
 **Ratings.** Flat Fee sends no `reputation_network` with its tasks (`EM_REPUTATION_NETWORK` is empty in the deploy's
 settings, `deploy/aws/em-hire.env`), so Execution Market picks the network the ratings are written on. Ratings on
 Robinhood Chain wait until the SDK Execution Market runs on (the Python `uvd-x402-sdk`) lists Robinhood Chain among the
 networks it can relay ratings on; it does not today, and Execution Market refuses a task that asks for it
 (`422 invalid_reputation_network`; the sources are in
-[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md#configuration), `EM_REPUTATION_NETWORK`).
+[docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md#configuration), `EM_REPUTATION_NETWORK`). Its public list of
+networks says the same: robinhood is not selectable for ratings (https://api.execution.market/api/v1/reputation/networks).
+Read on 12 Nov 2026, neither of Flat Fee's identities has a rating yet: the ERC-8004 reputation registry lists no rater
+for agent 1170265 on Base nor for agent 22487 on Robinhood Chain. Flat Fee itself does not rate its workers yet.
 
 ## Try it (judges: under 5 minutes, no wallet, no funds)
 
@@ -224,6 +235,53 @@ not a person). The run's output, word for word, with its exit code (`rc=0`) on t
 each transaction's hash, the amounts and the direction written next to it and no other amount, the end balances, the
 time, the task and the wallets. What the run checks, and what it refuses before it pays:
 [docs/EXECUTION-MARKET.md](docs/EXECUTION-MARKET.md#the-end-to-end-run-npm-run-e2ehire).
+
+### Two more paid calls from the team (7 and 8 Nov 2026)
+
+A paid question to the live demo on 7 Nov 2026, and a second hire through Execution Market on 8 Nov 2026, both bought by
+the team's payer wallet (`0x6Ce9…6af5`). The second hire's worker is the same team test wallet as the first's
+(`0xa329…71c7`): a script, not a person. Its task on Execution Market,
+https://api.execution.market/api/v1/tasks/d161b088-ae87-44df-8ed3-5af09018c779, is `completed` with its escrow
+`released`, and names its publisher as agent `22487`, the merchant's identity on Robinhood Chain.
+
+| when (UTC) | what moved | transaction |
+|---|---|---|
+| 7 Nov 20:07 | a paid question at the holder price: 0.05 USDG, buyer → merchant | [0x5fe7…2213](https://robinhoodchain.blockscout.com/tx/0x5fe7d69d3d5ce44649d644bb25174a366d71da0069accf0b82a214e80f082213) |
+| 7 Nov 20:07 | its $WIF cashback: 10 $WIF, merchant → buyer | [0xc3c5…3367](https://robinhoodchain.blockscout.com/tx/0xc3c5d09e7f06e06ec1a0936ca928ffa72a28efbb2762c2b92841548ec4143367) |
+| 8 Nov 18:05 | a hire at the holder price: 0.25 USDG, buyer → merchant | [0xf710…da03](https://robinhoodchain.blockscout.com/tx/0xf710dc423f7108a9bc94c40510f9d822c2c34afa764e2ad18f89c4ccbfc8da03) |
+| 8 Nov 18:05 | its $WIF cashback: 10 $WIF, merchant → buyer | [0x19a3…01d6](https://robinhoodchain.blockscout.com/tx/0x19a3e6643cb0f0a6a01b3bccf11fabdae9fd7ce63ecb257fdcba08c1f58b01d6) |
+| 8 Nov 18:06 | the test worker is assigned and the merchant locks the bounty: 0.2 USDG, merchant → Execution Market's escrow | [0x7452…8bab](https://robinhoodchain.blockscout.com/tx/0x74525b5e060e0df0763421a8a2ba265fc2959490b03f61202ec1154c89fe8bab) |
+| 8 Nov 18:06 | the test worker delivers a text, Flat Fee approves it, and the escrow pays: 0.174 USDG to the worker, 0.026 USDG to Execution Market (its 13% fee) | [0xb005…d68e](https://robinhoodchain.blockscout.com/tx/0xb0053fcc8c33ee17b34eb3d898c541eef8f12170134da323ffbc2acde62dd68e) |
+| 8 Nov 18:07 | Flat Fee's reward for the delivery it approved: 50 $WIF, merchant → worker | [0xe208…2a2f](https://robinhoodchain.blockscout.com/tx/0xe2086ab4a8d6ae2c8a4381d2aaa6acfbc5a8928d795b722876d89d17667a2a2f) |
+
+With the paid question of 2 Nov and the hire of 7 Nov, these are every paid call to the merchant and every $WIF
+transfer it has made on Robinhood Chain mainnet, read on chain on 12 Nov 2026: six $WIF transfers, all of them to
+wallets of the team (the merchant has sent six transactions in all, its nonce). The reads, with the blocks they cover:
+[docs/evidence/robinhood-2026-11-12.json](docs/evidence/robinhood-2026-11-12.json).
+
+### The same market, used by our agent swarm (11-12 Nov 2026)
+
+[KarmaKadabra](https://karmakadabra.ultravioletadao.xyz) is Ultravioleta DAO's swarm of AI agents, which hire each
+other on Execution Market. On Robinhood Chain, in USDG, two of its agents published a task each on 11 Nov 2026, two
+other agents of the swarm took them, and their buyers approved the deliveries on 12 Nov 2026: Execution Market's
+records show both `completed`, their escrows `released`. Flat Fee is not a party to these tasks; they are the market
+Flat Fee hires on, in use on Robinhood Chain by other agents. The agents and their wallets are in the swarm's public
+graph (https://karmakadabra.ultravioletadao.xyz/graph.json).
+
+| task (Execution Market's public page) | step | what moved | transaction |
+|---|---|---|---|
+| [3f8c7506…](https://execution.market/tasks/3f8c7506-4069-4ee5-9306-de63b8224aec) | a buyer agent of the swarm locks the bounty | 0.01 USDG, buyer → Execution Market's escrow | [0x6aa6…36ec](https://robinhoodchain.blockscout.com/tx/0x6aa6cac797713a2f288772c68bcf7f499ac1b1a31a5fa17b64aa3314235836ec) |
+| | kk-coordinator delivers, the buyer agent approves, and the escrow pays | 0.0087 USDG to kk-coordinator, 0.0013 USDG to Execution Market (its 13% fee) | [0x37e1…77ec](https://robinhoodchain.blockscout.com/tx/0x37e1c21aeafe67de99c0d65f5a2272569f726faddc869a03d6113fe6670a77ec) |
+| [c03d5028…](https://execution.market/tasks/c03d5028-ff09-427e-b780-1329e8075bb8) | a buyer agent of the swarm locks the bounty | 0.01 USDG, buyer → Execution Market's escrow | [0xfe46…0ae9](https://robinhoodchain.blockscout.com/tx/0xfe461c2b8edcd8aef91b3fb6b78845302d441a2ab7d128633e033ebae0d10ae9) |
+| | kk-trader delivers, the buyer agent approves, and the escrow pays | 0.0087 USDG to kk-trader, 0.0013 USDG to Execution Market (its 13% fee) | [0x39b4…c405](https://robinhoodchain.blockscout.com/tx/0x39b4c377018195e29002bfe08c80980f2428c7f3ab290e43916b882a3919c405) |
+
+Both sides of each of these tasks and of Flat Fee's two hires, the publisher and the worker, hold an ERC-8004 identity
+on Robinhood Chain, each minted by Ultravioleta's facilitator (`0x1030…13C7`) and transferred to its wallet: Flat Fee's
+merchant 22487 and its test worker
+22488 (7 Nov 2026), the swarm's two buyers 23394 and 23395 and its two workers 25419 (kk-coordinator) and 25420
+(kk-trader) (11 Nov 2026). None has a rating there yet (see Ratings above). On Base, where Execution Market writes its
+ratings today, the swarm's four agents already carry ratings from earlier tasks: on their ERC-8004 identities there, the
+two buyers have 18 and 26 raters (agents 18897 and 18815), kk-coordinator 3 (18775) and kk-trader 1 (59622).
 
 ## Robinhood Chain, USDG, $WIF and x402: where in the code
 
@@ -338,9 +396,11 @@ container starts with an empty `DATA_DIR`.
 
 ## What's next
 
-The ratings of each Execution Market task written on Robinhood Chain (ERC-8004), once the SDK Execution Market runs on
-lists Robinhood Chain as a network it can relay ratings on (today Flat Fee sends no `reputation_network` and Execution
-Market picks the network), an LLM behind the agent, and subscriptions priced in $WIF.
+Ratings on Robinhood Chain: Flat Fee and the agents of the swarm already hold ERC-8004 identities there, but no
+rating is written there yet. Flat Fee will rate each worker it approves, on Robinhood Chain once the SDK Execution Market
+runs on lists Robinhood Chain as a network it can relay ratings on (today Flat Fee sends no `reputation_network` and
+Execution Market picks the network). Then KarmaKadabra's agents as Flat Fee buyers, paying USDG per answer and earning
+$WIF; an LLM behind the agent; and subscriptions priced in $WIF.
 
 ## Team
 

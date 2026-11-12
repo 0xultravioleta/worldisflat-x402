@@ -65,6 +65,7 @@ let on = ""; // escrow on (EM_HIRE=on), $WIF on, every amount unusual
 let paused = ""; // the same, with hiring paused (the merchant cannot fund one more escrow)
 let off = ""; // the task board (EM_HIRE off), no $WIF token
 let fork = ""; // the same as `off`, served as a local fork (npm run demo)
+let live = ""; // the live demo's wallet on mainnet: the dated reads of docs/evidence count (GET /api/proof)
 let claimedTask = "";
 
 function start(env: Record<string, string>, deps: { chain: Chain; store: Store; localFork?: boolean; emHire?: EmHire }) {
@@ -138,6 +139,8 @@ before(() => {
   };
   off = start(offEnv, { chain: standardChain, store: offStore });
   fork = start(offEnv, { chain: standardChain, store: offStore, localFork: true });
+  const liveDir = dir("live");
+  live = start({ NETWORK: "robinhood", PAY_TO: "0xb9056196d3D00b4c09ec2E5E123E30b376d39cC6", FACILITATOR_URL: `http://${facilitatorHost}`, DATA_DIR: liveDir }, { chain: standardChain, store: new Store(liveDir) });
 });
 
 after(() => {
@@ -350,6 +353,38 @@ test("the wallet is asked to sign the amount the 402 asks (here the holder price
     assert.equal(p.$("#hire-pay").disabled, false);
     assert.equal(p.$("#board").open, false);
     assert.deepEqual(facCalls, []);
+  } finally {
+    p.close();
+  }
+});
+
+test("on the live demo's wallet the proof strip, the transactions and the escrowed work are the ones GET /api/proof sends", async () => {
+  const proof = await (await fetch(`${live}/api/proof`)).json();
+  const p = await openPage(live);
+  try {
+    const { doc, $ } = p;
+    const n = (id: string) => visibleText($(`#${id} .n`));
+    assert.deepEqual([n("stat-calls"), n("stat-usdg"), n("stat-escrow")], [String(proof.paidCalls.count), "0.60", String(proof.escrows.count)]);
+    assert.equal(proof.paidCalls.count, 4);
+    // $WIF has a token on mainnet: its figure shows, split as the transfers are
+    assert.equal($("#stat-wif").hidden, false);
+    assert.equal(n("stat-wif"), "140");
+    assert.equal(visibleText($("#stat-wif .s")), "4 cashback · 2 to workers");
+    assert.match(visibleText($("#proof-note")), /^Read on Robinhood Chain on 12 Nov 2026, 03:14 UTC \(block 112,214,177\)/);
+    assert.equal($("#proof-merchant").getAttribute("href"), proof.merchantUrl);
+    // one row per transaction, each one a link to the explorer
+    const rows = doc.querySelectorAll("#tx-list li");
+    assert.equal(rows.length, proof.paidCalls.count + proof.wif.count + proof.escrows.count);
+    for (const li of rows) assert.match(li.querySelector("a")!.getAttribute("href")!, /^https:\/\/robinhoodchain\.blockscout\.com\/tx\/0x[0-9a-f]{64}$/);
+    // a card per escrowed task, with what the server says about it
+    const cards = doc.querySelectorAll("#work li");
+    assert.equal(cards.length, proof.work.length);
+    assert.equal(visibleText($("#work-meta")), `2 Flat Fee hires · ${proof.swarmPaid} KarmaKadabra tasks, agent to agent`);
+    const hire = cards.find((c) => visibleText(c).includes("#d161b088"))!;
+    assert.equal(visibleText(hire.querySelector(".st")!), "released");
+    assert.match(visibleText(hire), /Flat Fee hire · #d161b088/);
+    assert.match(visibleText(hire), /Flat Fee's test worker \(a team wallet run by a script\)/);
+    assert.match(visibleText(hire), /0\.20 USDG in escrow · 0\.174 to whoever delivered/);
   } finally {
     p.close();
   }

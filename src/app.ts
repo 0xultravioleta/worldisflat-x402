@@ -8,6 +8,7 @@ import { answer } from "./agent.js";
 import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
 import { hireExpiry, newEmState, publicEm, publicPause, type EmHire } from "./emhire.js";
+import { buildProof, loadEvidence, type Evidence } from "./proof.js";
 import type { Store, Task } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
@@ -28,6 +29,8 @@ export interface AppDeps {
   emHire?: EmHire | null;
   /** milliseconds a paid hire waits for its publish on Execution Market before answering with the task as it stands */
   publishWaitMs?: number;
+  /** the dated reads on chain behind GET /api/proof (src/proof.ts); by default docs/evidence, null for none */
+  evidence?: Evidence | null;
 }
 
 type Route = "ask" | "hire";
@@ -112,8 +115,11 @@ export function createApp({
   localFork = false,
   emHire = null,
   publishWaitMs = 10_000,
+  evidence = loadEvidence(),
 }: AppDeps) {
   const app = new Hono();
+  // GET /api/proof counts this server's own settlements from here on, on top of the dated reads
+  const startedAt = now().toISOString();
   const redact = (e: unknown) => safeMessage(e, [cfg.rpcUrl]);
   // EM_HIRE=on without the driver would take money for tasks nobody publishes: refuse to start instead
   if (cfg.em && !emHire) throw new Error("EM_HIRE=on needs the Execution Market driver (createEmHire)");
@@ -414,6 +420,9 @@ export function createApp({
       })),
     ),
   );
+
+  // what the landing page shows as proof: every figure with its transactions (src/proof.ts)
+  app.get("/api/proof", (c) => c.json(buildProof(cfg, evidence, store.ledger(1000), store.tasks(), startedAt)));
 
   app.get("/api/tasks", (c) => c.json(store.tasks().map(view)));
   app.get("/api/tasks/:id", (c) => {

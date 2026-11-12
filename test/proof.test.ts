@@ -245,13 +245,20 @@ test("the image carries the evidence the server reads", () => {
 test("GET /api/proof on the live demo's wallet serves the figures; every server answers it", async () => {
   const chain: Chain = { provider: {} as JsonRpcProvider, merchantAddress: null, balanceOf: async () => 0n, tierOf: async () => "standard", sendWif: async () => { throw new Error("no"); } };
   const cfg = mainnet();
-  const app = createApp({ cfg, chain, store: new Store(cfg.dataDir), log: () => {} });
+  const store = new Store(cfg.dataDir);
+  const app = createApp({ cfg, chain, store, log: () => {} });
   const port = nextPort++;
   servers.push(serve({ fetch: app.fetch, port }));
   const p = await (await fetch(`http://127.0.0.1:${port}/api/proof`)).json();
   assert.equal(p.paidCalls.count, 4);
   assert.equal(p.swarmPaid, 6);
   assert.ok(p.snapshot);
+  // a call this server settles shows up on the next read, on top of the dated ones
+  store.addLedger({ kind: "ask", network: "eip155:4663", payer: Wallet.createRandom().address, tier: "standard", price: "100000", settleTx: hash("e1"), cashbackTx: null });
+  const after1 = await (await fetch(`http://127.0.0.1:${port}/api/proof`)).json();
+  assert.equal(after1.paidCalls.count, 5);
+  assert.equal(after1.paidCalls.amount, "0.7");
+  assert.deepEqual(after1.paidCalls.txs.filter((t: { source: string }) => t.source === "server").map((t: { tx: string }) => t.tx), [hash("e1")]);
   // with no evidence at all, the figures are empty and the page says nothing was read
   const none = createApp({ cfg, chain, store: new Store(tmp()), log: () => {}, evidence: null });
   const port2 = nextPort++;

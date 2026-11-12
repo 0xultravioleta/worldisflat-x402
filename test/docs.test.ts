@@ -971,14 +971,23 @@ test("no answer and no new README section says, in the past tense, that people d
   }
 });
 
-test("what it does: the $WIF back has its daily cap, and only holders who name their wallet pay half, as the code does it", () => {
-  // src/wif.ts refuses a transfer past WIF_DAILY_BUDGET (the call is still served, without its $WIF), and src/app.ts quotes
-  // the holder price only to a buyer that named its wallet before the 402
+test("what it does: the $WIF back and the worker's $WIF have the daily cap, and only holders who name their wallet pay half, as the code does it", () => {
+  // src/wif.ts refuses a transfer past WIF_DAILY_BUDGET (the call is still served, without its $WIF, and an approved answer
+  // earns no reward: the Execution Market reward draws from the same budget, src/index.ts), and src/app.ts quotes the
+  // holder price only to a buyer that named its wallet before the 402
+  assert.match(readFileSync("src/index.ts", "utf8"), /\bsendWif: budgetedWif\(cfg, chain, store\)/, "the Execution Market reward draws from the day's budget");
   const sentence =
-    `Settled calls send ${wif(CFG.wif.cashback)} $WIF back to the payer, up to ${wif(CFG.wif.dailyBudget)} $WIF a day; $WIF holders who name their wallet pay half; ` +
-    `and each worker whose answer Flat Fee approves earns ${wif(CFG.wif.workerReward)} $WIF on top.`;
+    `Settled calls send ${wif(CFG.wif.cashback)} $WIF back to the payer, and each worker whose answer Flat Fee approves earns ` +
+    `${wif(CFG.wif.workerReward)} $WIF on top, out of one budget of ${wif(CFG.wif.dailyBudget)} $WIF a day; $WIF holders who name their wallet pay half.`;
   assert.ok(norm(WHAT_IT_DOES).includes(sentence), `what_it_does says: ${sentence}`);
   assert.doesNotMatch(WHAT_IT_DOES, /\bevery (?:settled|paid) call sends\b/i, "what_it_does: no $WIF without its cap");
+  // and no other sentence of it gives the $WIF without the day's budget, or the half without the named wallet
+  for (const s of WHAT_IT_DOES.split(/(?<=[.!?]"?) (?=[A-Z])/)) {
+    if (/\$WIF back|cashback|\bearns? \d+ \$WIF/i.test(s)) {
+      assert.ok(s.includes(`${wif(CFG.wif.dailyBudget)} $WIF a day`), `what_it_does gives $WIF without the day's budget: ${s}`);
+    }
+    if (/\bpays? half\b/i.test(s)) assert.ok(s.includes("who name their wallet pay half"), `what_it_does gives the half without the named wallet: ${s}`);
+  }
 });
 
 test("the figures around the new rows are the reads': times, dates, the nonce, the identities listed, the tasks' state, the 2 Nov quotes", () => {

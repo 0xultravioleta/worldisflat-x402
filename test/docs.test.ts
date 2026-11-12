@@ -14,6 +14,7 @@
 // calls says that transaction's own amounts), the ERC-8004 identities on Robinhood Chain, the KarmaKadabra swarm's two
 // tasks there, and the ratings none of them has yet; and the plan of the edit, one row per field. No network.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { Wallet, formatUnits } from "ethers";
@@ -929,7 +930,6 @@ test("the swarm in the form: only the measured sentences, each saying the swarm 
   // its agents buying from Flat Fee today, or more of them, fails here until it is measured and added)
   const APPROVED = new Set([
     "That market is not only Flat Fee's on Robinhood Chain: on 11 and 12 Nov 2026 two agents of KarmaKadabra, our swarm of AI agents, hired two others there, and both tasks were paid out of USDG escrow on Robinhood Chain.",
-    "And our own swarm's agents, which already hire each other on Execution Market on Robinhood Chain, pay there in USDG with the same EIP-3009 authorizations Flat Fee takes.",
     `Our KarmaKadabra agents hire each other on Execution Market too: in two tasks each buyer locked 0.01 USDG in escrow on Robinhood Chain and the agent that delivered got 0.0087 USDG, net of a 13% fee.`,
     "Ratings: Flat Fee and the swarm's agents that hired on Robinhood Chain all hold ERC-8004 identities there, but Execution Market writes no ratings on Robinhood Chain yet.",
     "Then KarmaKadabra's agents as Flat Fee buyers, paying USDG per answer and earning $WIF; an LLM behind the agent; and subscriptions priced in $WIF.",
@@ -945,10 +945,9 @@ test("the swarm in the form: only the measured sentences, each saying the swarm 
     }
   }
   assert.deepEqual([...seen].sort(), [...APPROVED].sort(), "each measured sentence is in its answer");
-  // what the measured sentences rest on: the swarm's locks are EIP-3009 authorizations its buyers signed, in USDG
-  for (const t of SWARM_TASKS) {
-    assert.ok(t.escrow_tx!.usdg_eip3009_authorizers.some((w) => lc(w) === lc(t.agent_id)), `${t.id}: the buyer's EIP-3009 authorization`);
-  }
+  // the flywheel's "why they come back" answers only that, with $WIF in every sentence (c0der, 2026-11-12: the swarm is
+  // in what it does and how it's made, not in a field that scores the loop)
+  for (const sentence of answer("flywheel_return").split(/(?<=\.) (?=[A-Z])/)) assert.match(sentence, /\$WIF/, `flywheel_return: ${sentence}`);
   // and whats_next keeps the swarm as buyers in the future: it is no claim of today
   assert.match(answer("whats_next"), /\. Next, [^.]*\. Then KarmaKadabra's agents as Flat Fee buyers/, "whats_next: the swarm as buyers comes after 'Then'");
 });
@@ -970,4 +969,60 @@ test("no answer and no new README section says, in the past tense, that people d
     const p = EV.erc8004.parties.find((x) => lc(x.wallet) === lc(g.worker_wallet))!;
     assert.ok(norm(section(README, SWARM_HEADING)).includes(`${p.robinhood.agent_id} (${g.worker})`), `README: ${p.robinhood.agent_id} is ${g.worker}`);
   }
+});
+
+test("what it does: the $WIF back has its daily cap, and only holders who name their wallet pay half, as the code does it", () => {
+  // src/wif.ts refuses a transfer past WIF_DAILY_BUDGET (the call is still served, without its $WIF), and src/app.ts quotes
+  // the holder price only to a buyer that named its wallet before the 402
+  const sentence =
+    `Settled calls send ${wif(CFG.wif.cashback)} $WIF back to the payer, up to ${wif(CFG.wif.dailyBudget)} $WIF a day; $WIF holders who name their wallet pay half; ` +
+    `and each worker whose answer Flat Fee approves earns ${wif(CFG.wif.workerReward)} $WIF on top.`;
+  assert.ok(norm(WHAT_IT_DOES).includes(sentence), `what_it_does says: ${sentence}`);
+  assert.doesNotMatch(WHAT_IT_DOES, /\bevery (?:settled|paid) call sends\b/i, "what_it_does: no $WIF without its cap");
+});
+
+test("the figures around the new rows are the reads': times, dates, the nonce, the identities listed, the tasks' state, the 2 Nov quotes", () => {
+  const hhmm = (at: string) => `${Number(at.slice(8, 10))} Nov ${at.slice(11, 16)}`;
+  // each later row's time is its transaction's
+  for (const row of section(README, LATER_HEADING).split("\n").filter((l) => /^\| \d/.test(l))) {
+    const h = [...row.matchAll(TX)][0][1];
+    const at = EV.merchant_transfers.items.find((i) => i.tx === h)?.at ?? EV.execution_market.tasks.find((t) => t.payment_tx?.tx === h)!.payment_tx!.at;
+    assert.ok(row.startsWith(`| ${hhmm(at)} |`), `the time of ${h}: ${row}`);
+  }
+  // the mint of 22487: day and minute, in both docs
+  const mint = MERCHANT_RH.transfers[0].at;
+  const minted = `on ${Number(mint.slice(8, 10))} Nov ${mint.slice(0, 4)} at ${mint.slice(11, 16)} UTC`;
+  assert.ok(norm(EM_SECTION).includes(minted) && norm(section(SUBMISSION, EVIDENCE_HEADING)).includes(minted), `the mint: ${minted}`);
+  // the merchant's nonce, in words
+  assert.ok(norm(section(README, LATER_HEADING)).includes(`the merchant has sent ${NUMBER_WORDS[EV.merchant_transfers.merchant_nonce]} transactions in all, its nonce`));
+  // the day each group of identities was minted
+  const day = (ids: number[]) => [...new Set(EV.erc8004.parties.filter((p) => ids.includes(p.robinhood.agent_id)).map((p) => p.robinhood.transfers[0].at.slice(0, 10)))];
+  assert.deepEqual(day([22487, 22488]), ["2026-11-07"]);
+  assert.deepEqual(day([23394, 23395, 25419, 25420]), ["2026-11-11"]);
+  const swarm = norm(section(README, SWARM_HEADING));
+  assert.ok(swarm.includes("22488 (7 Nov 2026)") && swarm.includes("25420 (kk-trader) (11 Nov 2026)"), "README: the days of the identities");
+  // SUBMISSION's list of the other identities on Robinhood Chain is exactly the reads'
+  const others = EV.erc8004.parties.map((p) => p.robinhood.agent_id).filter((id) => id !== MERCHANT_RH.agent_id).sort((x, y) => x - y);
+  assert.ok(norm(section(SUBMISSION, EVIDENCE_HEADING)).includes(`hold identities on Robinhood Chain too (${others.join(", ")}).`), `the list: ${others}`);
+  // the swarm's tasks' state, as the README writes it
+  const [state] = [...new Set(SWARM_TASKS.map((t) => `${t.status}/${t.escrow_status}`))];
+  assert.equal(new Set(SWARM_TASKS.map((t) => `${t.status}/${t.escrow_status}`)).size, 1);
+  assert.ok(swarm.includes(`records show both ${state.split("/")[0]}, their escrows ${state.split("/")[1]}`), `README: the swarm's tasks are ${state}`);
+  // the swarm's raters on Base, in SUBMISSION too
+  const raters = EV.erc8004.parties.filter((p) => p.base && lc(p.wallet) !== lc(EV.merchant)).map((p) => p.base!.ratings_clients);
+  assert.ok(norm(section(SUBMISSION, EVIDENCE_HEADING)).includes(`their ERC-8004 identities there have ${raters.slice(0, -1).join(", ")} and ${raters.at(-1)} raters`), `SUBMISSION: ${raters}`);
+});
+
+test("the plan's quotes of what is published are the 2 Nov text (45fab02), word for word", (t) => {
+  let then: string;
+  try {
+    then = execFileSync("git", ["show", "45fab02:SUBMISSION.md"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    t.skip("no git history here (a shallow checkout): the 2 Nov text cannot be read");
+    return;
+  }
+  const plan = section(SUBMISSION, PLAN_HEADING);
+  const quotes = plan.split("\n").filter((l) => /^\| [^-]/.test(l) && !l.startsWith("| field |")).flatMap((r) => [...r.split("|")[2].matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  assert.ok(quotes.length >= 3, `the plan quotes: ${quotes}`);
+  for (const q of quotes) assert.ok(then.includes(q), `"${q}" is not in SUBMISSION.md at 45fab02`);
 });

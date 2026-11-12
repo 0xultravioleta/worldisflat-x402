@@ -28,15 +28,15 @@ $WIF use and the flywheel, the fields that score, stay the center.
 | project name `name` | Flat Fee | Flat Fee | no change |
 | one liner `one_liner` | "Ask an agent or hire a human for a flat USDG fee on Robinhood Chain, $WIF back" | "Ask an agent or hire a human via Execution Market for a flat USDG fee, $WIF back" | hiring goes through Execution Market now |
 | category `category_slugs` | agents and ai, consumer and payments, tools and infra | the same three | no change |
-| what it does `what_it_does` | a storefront: a 402 in USDG, one signature, the answer; tasks for a human; $WIF back, holders pay half, humans paid in $WIF | the same storefront, plus the hire as it runs: published on Execution Market by an ERC-8004 agent, the pay in USDG escrow on Robinhood Chain, the approval; the swarm's tasks on that market; the server's own words for a hire nobody takes | the 2 Nov text describes the task board, which the live demo no longer uses (`EM_HIRE` on since 7 Nov) |
-| who it's for `who_its_for` | agents and people buying one answer or errand; builders; "humans nearby earn $WIF" | Execution Market's people, whose pay is locked in escrow when they are assigned, plus 50 $WIF for an approved answer | the workers come from Execution Market now |
+| what it does `what_it_does` | a storefront: a 402 in USDG, one signature, the answer; tasks for a human; $WIF back, holders pay half, humans paid in $WIF | the same storefront, plus the hire as it runs: published on Execution Market by an ERC-8004 agent, the pay in USDG escrow on Robinhood Chain, the approval; the swarm's tasks on that market; the server's own words for a hire nobody takes | the 2 Nov text describes the task board, which the live demo no longer uses (`EM_HIRE` on since 7 Nov); the $WIF loop keeps its daily cap and the wallet the buyer names |
+| who it's for `who_its_for` | agents and people buying one answer or errand; builders; "Humans nearby earn $WIF by completing paid tasks." | Execution Market's people, whose pay is locked in escrow when they are assigned, plus 50 $WIF for an approved answer | the workers come from Execution Market now |
 | how does it use $wif `wif_usage` | cashback; the holder price of a question; 50 $WIF to a worker | adds the holder price of a hire, the worker paid by the escrow with $WIF on top, one daily budget, and the six $WIF transfers on chain and whose wallets got them | the field asks for specifics; all of it is on chain |
 | integration type `integration_types` | holding $wif unlocks something, other | the same two | no change (the options load only after login) |
 | contract addresses `contract_addresses` | empty | empty | Flat Fee deploys no contract |
 | ok to feature `ok_to_feature` | ticked | ticked | no change |
 | what does someone do `flywheel_action` | "Pays a flat USDG fee to ask the agent a question or to hire a human for a small task." | the prices, the holder half, and the worker's side: a Flat Fee task on Execution Market, its pay in escrow before the work starts | the loop's second person, the worker, was missing |
 | what happens to $wif `flywheel_wif` | 10 $WIF back after a call, 500 a day, 50 to each human who completes a task | the 50 only for an answer Flat Fee approves, on top of the escrow; the holder half checked on chain against the signer | as the code does it |
-| why they come back `flywheel_return` | ten paid calls make a holder; workers paid in $WIF | adds the escrowed pay, and our own swarm's agents, which already hire each other on that market and pay with the same authorizations Flat Fee takes | who else is on the market |
+| why they come back `flywheel_return` | ten paid calls make a holder; workers paid in $WIF | adds the worker's pay locked in escrow before the work starts, and the $WIF that buys workers the cheaper price | why each side comes back, with $WIF |
 | github repo `repo_url` | https://github.com/0xultravioleta/worldisflat-x402 | the same | no change |
 | demo video `demo_video_url` | https://youtu.be/oRGfZMNiinI | `<<VIDEO_V2>>`: the new video's link, once the owner uploads it | the 2 Nov video shows none of Execution Market, the swarm or ERC-8004 |
 | live link `live_url` | https://flatfee.ultravioletadao.xyz | the same | no change |
@@ -92,10 +92,10 @@ Ask an agent or hire a human via Execution Market for a flat USDG fee, $WIF back
 
 Keep the three of 2 Nov, the first one the main one: agents and ai, consumer and payments, tools and infra.
 
-### what it does · `what_it_does` · 1423 of 1500 chars
+### what it does · `what_it_does` · 1461 of 1500 chars
 
 ```text
-Flat Fee is a pay-per-call storefront on Robinhood Chain with $WIF in the loop. Its HTTP endpoint answers 402 Payment Required with a flat price in USDG; a wallet or an agent signs one EIP-3009 authorization, and Ultravioleta's open-source x402 facilitator settles it on chain and pays the gas. For 0.10 USDG an agent answers from live chain data (balances, blocks, gas, $WIF). For 0.50 USDG Flat Fee hires a human through Execution Market on Robinhood Chain: it publishes the task there as an ERC-8004 agent, locks the worker's pay in a USDG escrow on Robinhood Chain, approves the text answer, and the escrow pays the worker. Every settled call sends 10 $WIF back to the payer, $WIF holders pay half, and each worker whose answer Flat Fee approves earns 50 $WIF on top. That market is not only Flat Fee's on Robinhood Chain: on 11 and 12 Nov 2026 two agents of KarmaKadabra, our swarm of AI agents, hired two others there, and both tasks were paid out of USDG escrow on Robinhood Chain. No accounts, no API keys, no gas for the buyer. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+Flat Fee is a pay-per-call storefront on Robinhood Chain with $WIF in the loop. Its HTTP endpoint answers 402 Payment Required with a flat price in USDG; a wallet or an agent signs one EIP-3009 authorization, and Ultravioleta's open-source x402 facilitator settles it on chain and pays the gas. For 0.10 USDG an agent answers from live chain data (balances, blocks, gas, $WIF). For 0.50 USDG Flat Fee hires a human through Execution Market on Robinhood Chain: it publishes the task there as an ERC-8004 agent, locks the worker's pay in a USDG escrow on Robinhood Chain, approves the text answer, and the escrow pays the worker. Settled calls send 10 $WIF back to the payer, up to 500 $WIF a day; $WIF holders who name their wallet pay half; and each worker whose answer Flat Fee approves earns 50 $WIF on top. That market is not only Flat Fee's on Robinhood Chain: on 11 and 12 Nov 2026 two agents of KarmaKadabra, our swarm of AI agents, hired two others there, and both tasks were paid out of USDG escrow on Robinhood Chain. No accounts, no API keys, no gas for the buyer. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
 ```
 
 ### who it's for · `who_its_for` · 455 of 500 chars
@@ -135,10 +135,10 @@ Pays a flat USDG fee with one x402 signature: 0.10 USDG to ask the agent a quest
 The merchant sends the payer 10 $WIF on Robinhood Chain after each settled call, up to 500 $WIF a day, and 50 $WIF to each Execution Market worker whose answer it approves, on top of the USDG escrow. A payer holding 100 $WIF or more who names its wallet before paying pays half, checked on chain against the address that signs.
 ```
 
-### why does that bring them, or others, back · `flywheel_return` · 391 of 500 chars
+### why does that bring them, or others, back · `flywheel_return` · 221 of 500 chars
 
 ```text
-Ten paid calls make you a $WIF holder, and holders pay half on every call after that. Workers come back for tasks whose USDG is locked in escrow before they start, plus $WIF that buys them the cheaper price when they buy. And our own swarm's agents, which already hire each other on Execution Market on Robinhood Chain, pay there in USDG with the same EIP-3009 authorizations Flat Fee takes.
+Ten paid calls make you a $WIF holder, and holders pay half on every call after that. Workers come back for tasks whose USDG is locked in escrow before they start, plus $WIF that buys them the cheaper price when they buy.
 ```
 
 ### github repo · `repo_url` · 50 of 300 chars
@@ -228,8 +228,8 @@ texts above and the README against it.
   no rater for any of them), nor has Flat Fee's identity on Base, and Execution Market does not write ratings on Robinhood
   Chain today: its public list of networks marks robinhood as not selectable for ratings
   (https://api.execution.market/api/v1/reputation/networks). Hence *what's next*. The swarm's four agents do carry ratings
-  from earlier tasks on Base, where Execution Market writes them today (README), and Execution Market's pages of their
-  tasks show that reputation.
+  from earlier tasks on Base, where Execution Market writes them today: their ERC-8004 identities there have 18, 26, 3
+  and 1 raters (README).
 
 ## Review
 

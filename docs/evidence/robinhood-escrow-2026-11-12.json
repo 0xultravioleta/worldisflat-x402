@@ -1,0 +1,15 @@
+{
+ "what": "Where Execution Market's escrow on Robinhood Chain keeps a worker's locked USDG. Every lock in docs/evidence moves the USDG from the token collector to this address, and every payment out of the escrow comes from it. It is the token store that Execution Market's AuthCaptureEscrow keeps for its operator: the escrow's getTokenStore(operator) returns it.",
+ "read_at": "2026-11-12T18:58:20Z",
+ "block": 112755863,
+ "sources": {
+  "robinhood_chain": "public JSON-RPC of Robinhood Chain mainnet (chain id 4663): eth_call getTokenStore(address) (selector 0x9d3facde) on the escrow, eth_getCode on the token store"
+ },
+ "escrow_token_store": {
+  "escrow": "0xBdEA0D1bcC5966192B070Fdf62aB4EF5b4420cff",
+  "operator": "0x0258472A1410Ac3Ad720f1BC83f22B3c0af1Fd9D",
+  "call": "getTokenStore(address operator) returns (address)",
+  "address": "0x9442581B3DC5A46BcB27419B68846c0cB1A3a86B",
+  "code_bytes": 44
+ }
+}

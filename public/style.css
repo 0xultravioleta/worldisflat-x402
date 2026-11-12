@@ -114,6 +114,26 @@ code { font-family: var(--mono); font-size: .92em; }
   margin: 0 0 12px; }
 .three p { margin: 0; color: var(--muted); font-size: var(--fs-small); text-wrap: pretty; }
 
+/* where a hire's money goes, and what Flat Fee cannot do with it */
+.money { padding: 56px var(--gutter) 8px; }
+.money .three h3 { font: 700 26px/1.2 var(--mono); letter-spacing: -0.02em; margin: 0 0 6px; }
+.cannot-h { margin: 28px 0 10px; font-size: 18px; }
+.cannot { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cannot li { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-md); color: var(--muted); font-size: var(--fs-small); }
+.cannot b { display: block; color: var(--text); margin: 0 0 4px; }
+
+/* /proof: a document of tables */
+body.doc .hero { padding-bottom: 8px; }
+div.stat .n::after { content: none; }
+.doc-sec { padding: 40px 0 8px; }
+.ptable { width: 100%; border-collapse: collapse; margin: 0 0 24px; font-size: var(--fs-small); }
+.ptable caption { text-align: left; font-weight: 650; padding: 0 0 8px; color: var(--text); }
+.ptable th { text-align: left; font: 600 var(--fs-micro)/1.4 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); }
+.ptable td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+.ptable .mono, .ptable a.mono { font-family: var(--mono); font-size: var(--fs-micro); }
+.ptable .w { color: var(--muted); font-size: var(--fs-micro); }
+
 /* the three cards */
 .try { padding: 56px var(--gutter) 8px; }
 .cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
@@ -311,8 +331,11 @@ summary:hover .t { color: var(--lime); }
   .stat:nth-child(odd) { border-left: 0; }
   .stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
   .stat .n { font-size: 26px; }
-  .how, .try, .work-sec, .wif, .stack, .limits, .video-sec, .dev { padding-top: 40px; }
-  .three, .cards, .loop, .two, .dev-grid, .stack-cards { grid-template-columns: minmax(0, 1fr); }
+  .how, .money, .try, .work-sec, .wif, .stack, .limits, .video-sec, .dev { padding-top: 40px; }
+  .three, .cards, .loop, .two, .dev-grid, .stack-cards, .cannot { grid-template-columns: minmax(0, 1fr); }
+  .ptable thead { display: none; }
+  .ptable tr { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .ptable td { border: 0; padding: 2px 0; }
   #hire { grid-row: auto; }
   .work { grid-template-columns: minmax(0, 1fr); }
   .txs li { grid-template-columns: 1fr; gap: 2px; }

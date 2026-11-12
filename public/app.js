@@ -1,5 +1,6 @@
 import { paymentHeader, typedDataFor, walletPayBlocked } from "/x402-browser.js?v=2";
-import { escrowCopy, isAbsent, plain, proofCopy, usdg, utcDate, valueAt } from "/page-state.js?v=4";
+// where a hire's money goes (page-state.js flowCopy) does not change while the server runs: the server renders it
+import { escrowCopy, isAbsent, proofCopy, short, txRows, usdg, utcDate, valueAt, workCardView, workMeta } from "/page-state.js?v=6";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -8,7 +9,6 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const k of kids) n.append(k);
   return n;
 };
-const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 const link = (href, text) => (href ? el("a", { href, target: "_blank", rel: "noopener" }, text) : document.createTextNode("—"));
 
 let info;
@@ -191,37 +191,27 @@ function renderProof(p) {
   $("#proof-note").classList.toggle("bad", !p);
   if (!p) return;
   $("#proof-merchant").setAttribute("href", p.merchantUrl);
-  // every transaction behind the figures, newest first
-  const rows = [
-    ...p.paidCalls.txs.map((t) => ["paid call", `${usdg(t.amount)} USDG`, t]),
-    ...p.wif.txs.map((t) => [t.kind === "reward" ? "$WIF to a worker" : "$WIF cashback", `${plain(t.amount)} $WIF`, t]),
-    ...p.escrows.txs.map((t) => ["hire escrow", `${usdg(t.amount)} USDG`, t]),
-  ].sort((a, b) => (a[2].at < b[2].at ? 1 : -1));
+  // every transaction behind the figures, newest first (the same rows the server draws: page-state.js txRows)
+  const rows = txRows(p);
   $("#tx-list").replaceChildren(
     ...(rows.length
-      ? rows.map(([what, amount, t]) => el("li", {}, el("span", { class: "w" }, utcDate(t.at)), el("span", {}, `${what} · ${amount}`), link(t.url, short(t.tx))))
+      ? rows.map((r) => el("li", {}, el("span", { class: "w" }, r.at), el("span", {}, r.what), link(r.url, r.tx)))
       : [el("li", { class: "empty" }, "No transactions to show yet.")]),
   );
   // the work paid out of escrow: Flat Fee's hires and the swarm's tasks on the same market
-  const hires = p.work.filter((w) => w.kind === "flatfee").length;
-  $("#work-meta").textContent = `${hires} Flat Fee ${hires === 1 ? "hire" : "hires"} · ${p.swarmPaid} KarmaKadabra ${p.swarmPaid === 1 ? "task" : "tasks"}, agent to agent`;
+  $("#work-meta").textContent = workMeta(p);
   $("#work").replaceChildren(...(p.work.length ? p.work.map(workCard) : [el("li", { class: "empty" }, "No escrowed work to show yet.")]));
 }
 
 function workCard(w) {
-  const links = el("p", { class: "job-links" });
-  if (w.escrowUrl) links.append(link(w.escrowUrl, "escrow lock ↗"));
-  if (w.paymentUrl) links.append(link(w.paymentUrl, "payment ↗"));
-  if (w.page) links.append(link(w.page, "task ↗"));
-  const amount = el("p", { class: "job-amt" }, w.bounty ? `${usdg(w.bounty)} USDG escrowed` : "escrow amount not recorded");
-  if (w.paid) amount.append(el("span", { class: "w" }, ` · ${usdg(w.paid)} to whoever delivered`));
+  const v = workCardView(w);
   return el("li", { class: "job" },
-    el("p", { class: "job-top" }, el("span", { class: `st ${w.status}` }, w.status), w.kind === "flatfee" ? "Flat Fee hire" : "KarmaKadabra · agent to agent", w.ref ? ` · #${w.ref}` : ""),
-    el("p", { class: w.title ? "job-title" : "job-title none" }, w.title || "Title not in this record"),
-    el("p", { class: "job-who" }, el("b", {}, w.from), " → ", w.to),
-    amount,
-    el("p", { class: "job-amt" }, el("span", { class: "w" }, utcDate(w.at))),
-    links,
+    el("p", { class: "job-top" }, el("span", { class: `st ${v.status}` }, v.status), v.kind, v.ref),
+    el("p", { class: v.titled ? "job-title" : "job-title none" }, v.title),
+    el("p", { class: "job-who" }, el("b", {}, v.from), " → ", v.to),
+    el("p", { class: "job-amt" }, v.amount, el("span", { class: "w" }, v.paid)),
+    el("p", { class: "job-amt" }, el("span", { class: "w" }, v.at)),
+    el("p", { class: "job-links" }, ...v.links.map((l) => link(l.href, l.text))),
   );
 }
 
@@ -269,7 +259,8 @@ async function refresh() {
   $("#ledger").replaceChildren(
     // rows of the role="table" in index.html; data-k labels the cells on a phone, where the header row is hidden
     ...(ledger.length ? ledger.map((e) => el("li", { role: "row" },
-      el("span", { role: "cell" }, new Date(e.at).toLocaleTimeString()),
+      // the same time the server renders (UTC), so the page reads the same before and after the script
+      el("span", { role: "cell" }, utcDate(e.at)),
       el("span", { role: "cell" }, e.kind === "ask" ? "ask" : `hire #${e.taskId}`),
       el("span", { role: "cell", class: "mono", "data-k": "payer" }, short(e.payer)),
       el("span", { role: "cell" }, `${usdg(e.price)} USDG${e.tier === "holder" ? " (holder)" : ""}`),

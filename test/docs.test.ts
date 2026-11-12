@@ -971,14 +971,42 @@ test("no answer and no new README section says, in the past tense, that people d
   }
 });
 
-test("what it does: the $WIF back has its daily cap, and only holders who name their wallet pay half, as the code does it", () => {
-  // src/wif.ts refuses a transfer past WIF_DAILY_BUDGET (the call is still served, without its $WIF), and src/app.ts quotes
-  // the holder price only to a buyer that named its wallet before the 402
+test("what it does: the $WIF back and the worker's $WIF have the daily cap, and only holders who name their wallet pay half, as the code does it", () => {
+  // src/wif.ts refuses a transfer past WIF_DAILY_BUDGET (the call is still served, without its $WIF, and an approved answer
+  // earns no reward: the Execution Market reward draws from the same budget, src/index.ts), and src/app.ts quotes the
+  // holder price only to a buyer that named its wallet before the 402
+  assert.match(readFileSync("src/index.ts", "utf8"), /\bsendWif: budgetedWif\(cfg, chain, store\)/, "the Execution Market reward draws from the day's budget");
   const sentence =
-    `Settled calls send ${wif(CFG.wif.cashback)} $WIF back to the payer, up to ${wif(CFG.wif.dailyBudget)} $WIF a day; $WIF holders who name their wallet pay half; ` +
-    `and each worker whose answer Flat Fee approves earns ${wif(CFG.wif.workerReward)} $WIF on top.`;
+    `Settled calls send ${wif(CFG.wif.cashback)} $WIF back to the payer, and each worker whose answer Flat Fee approves earns ` +
+    `${wif(CFG.wif.workerReward)} $WIF on top, out of one budget of ${wif(CFG.wif.dailyBudget)} $WIF a day; $WIF holders who name their wallet pay half.`;
   assert.ok(norm(WHAT_IT_DOES).includes(sentence), `what_it_does says: ${sentence}`);
   assert.doesNotMatch(WHAT_IT_DOES, /\bevery (?:settled|paid) call sends\b/i, "what_it_does: no $WIF without its cap");
+  // and no other sentence of it gives the $WIF without the day's budget, or the half without the named wallet
+  for (const s of WHAT_IT_DOES.split(/(?<=[.!?]"?) (?=[A-Z])/)) {
+    if (/\$WIF back|cashback|\bearns? \d+ \$WIF/i.test(s)) {
+      assert.ok(s.includes(`${wif(CFG.wif.dailyBudget)} $WIF a day`), `what_it_does gives $WIF without the day's budget: ${s}`);
+    }
+    if (/\bpays? half\b/i.test(s)) assert.ok(s.includes("who name their wallet pay half"), `what_it_does gives the half without the named wallet: ${s}`);
+  }
+});
+
+test("every answer gives the holder half only to a holder who names their wallet, and the README's hire gives the worker's $WIF its daily cap", () => {
+  // src/app.ts (tierFor) quotes the holder price only to a buyer that named its wallet before the 402: each sentence of
+  // the form that says holders pay half says so (who_its_for, flywheel_action, flywheel_return, flywheel_wif, what_it_does)
+  let halves = 0;
+  for (const a of ANSWERS) {
+    for (const b of a.blocks) {
+      for (const s of b.split(/(?<=[.!?]"?) (?=[A-Z])/)) {
+        if (!/\bpays? half\b/i.test(s)) continue;
+        halves++;
+        assert.match(s, /\bnames? (?:their|its) wallet\b/, `${a.key}: the half without the named wallet: ${s}`);
+      }
+    }
+  }
+  assert.ok(halves >= 5, `the sentences that give the holder half: ${halves}`);
+  // the README's POST /api/hire: the worker's reward comes out of the budget the cashback draws from (src/wif.ts)
+  const hire = `the worker earns ${wif(CFG.wif.workerReward)} $WIF on top, out of the same ${wif(CFG.wif.dailyBudget)} $WIF a day as the cashback ([Safety](#safety))`;
+  assert.ok(norm(README).includes(hire), `README's POST /api/hire: ${hire}`);
 });
 
 test("the figures around the new rows are the reads': times, dates, the nonce, the identities listed, the tasks' state, the 2 Nov quotes", () => {

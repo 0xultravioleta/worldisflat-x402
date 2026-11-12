@@ -92,16 +92,16 @@ Ask an agent or hire a human via Execution Market for a flat USDG fee, $WIF back
 
 Keep the three of 2 Nov, the first one the main one: agents and ai, consumer and payments, tools and infra.
 
-### what it does · `what_it_does` · 1461 of 1500 chars
+### what it does · `what_it_does` · 1476 of 1500 chars
 
 ```text
-Flat Fee is a pay-per-call storefront on Robinhood Chain with $WIF in the loop. Its HTTP endpoint answers 402 Payment Required with a flat price in USDG; a wallet or an agent signs one EIP-3009 authorization, and Ultravioleta's open-source x402 facilitator settles it on chain and pays the gas. For 0.10 USDG an agent answers from live chain data (balances, blocks, gas, $WIF). For 0.50 USDG Flat Fee hires a human through Execution Market on Robinhood Chain: it publishes the task there as an ERC-8004 agent, locks the worker's pay in a USDG escrow on Robinhood Chain, approves the text answer, and the escrow pays the worker. Settled calls send 10 $WIF back to the payer, up to 500 $WIF a day; $WIF holders who name their wallet pay half; and each worker whose answer Flat Fee approves earns 50 $WIF on top. That market is not only Flat Fee's on Robinhood Chain: on 11 and 12 Nov 2026 two agents of KarmaKadabra, our swarm of AI agents, hired two others there, and both tasks were paid out of USDG escrow on Robinhood Chain. No accounts, no API keys, no gas for the buyer. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
+Flat Fee is a pay-per-call storefront on Robinhood Chain with $WIF in the loop. Its HTTP endpoint answers 402 Payment Required with a flat price in USDG; a wallet or an agent signs one EIP-3009 authorization, and Ultravioleta's open-source x402 facilitator settles it on chain and pays the gas. For 0.10 USDG an agent answers from live chain data (balances, blocks, gas, $WIF). For 0.50 USDG Flat Fee hires a human through Execution Market on Robinhood Chain: it publishes the task there as an ERC-8004 agent, locks the worker's pay in a USDG escrow on Robinhood Chain, approves the text answer, and the escrow pays the worker. Settled calls send 10 $WIF back to the payer, and each worker whose answer Flat Fee approves earns 50 $WIF on top, out of one budget of 500 $WIF a day; $WIF holders who name their wallet pay half. That market is not only Flat Fee's on Robinhood Chain: on 11 and 12 Nov 2026 two agents of KarmaKadabra, our swarm of AI agents, hired two others there, and both tasks were paid out of USDG escrow on Robinhood Chain. No accounts, no API keys, no gas for the buyer. Before anyone pays for a hire, the server says what happens if nobody takes it: "The task is on Execution Market, for any of its people to take. If no one takes it within 24 h, it expires there, with nothing locked for it. If the person who takes it does not deliver by then, Execution Market returns the escrowed pay to Flat Fee's wallet. Either way, the fee you paid is not refunded."
 ```
 
-### who it's for · `who_its_for` · 455 of 500 chars
+### who it's for · `who_its_for` · 483 of 500 chars
 
 ```text
-AI agents and people who want one answer, or one small task answered in text, for cents of USDG, with any wallet and no account or API key; $WIF holders, who pay half. People on Execution Market who take a Flat Fee task: their pay is locked in USDG escrow on Robinhood Chain when they are assigned, and an approved answer earns 50 $WIF on top. And builders who want their own API to charge USDG on Robinhood Chain over x402: the code is open source (MIT).
+AI agents and people who want one answer, or one small task answered in text, for cents of USDG, with any wallet and no account or API key; $WIF holders, who pay half when they name their wallet. People on Execution Market who take a Flat Fee task: their pay is locked in USDG escrow on Robinhood Chain when they are assigned, and an approved answer earns 50 $WIF on top. And builders who want their own API to charge USDG on Robinhood Chain over x402: the code is open source (MIT).
 ```
 
 ### how does it use $wif · `wif_usage` · 968 of 1000 chars
@@ -123,10 +123,10 @@ calls USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` and $WIF `0x5173b8ea6923
 
 Keep it ticked, as on 2 Nov.
 
-### what does someone do · `flywheel_action` · 372 of 500 chars
+### what does someone do · `flywheel_action` · 394 of 500 chars
 
 ```text
-Pays a flat USDG fee with one x402 signature: 0.10 USDG to ask the agent a question, 0.50 USDG to hire a human through Execution Market for a small task answered in text; $WIF holders pay half. Or takes such a task on Execution Market as the worker: the pay is locked in USDG escrow on Robinhood Chain before the work starts and released when Flat Fee approves the answer.
+Pays a flat USDG fee with one x402 signature: 0.10 USDG to ask the agent a question, 0.50 USDG to hire a human through Execution Market for a small task answered in text; $WIF holders who name their wallet pay half. Or takes such a task on Execution Market as the worker: the pay is locked in USDG escrow on Robinhood Chain before the work starts and released when Flat Fee approves the answer.
 ```
 
 ### what happens to $wif when they do it · `flywheel_wif` · 327 of 500 chars
@@ -135,10 +135,10 @@ Pays a flat USDG fee with one x402 signature: 0.10 USDG to ask the agent a quest
 The merchant sends the payer 10 $WIF on Robinhood Chain after each settled call, up to 500 $WIF a day, and 50 $WIF to each Execution Market worker whose answer it approves, on top of the USDG escrow. A payer holding 100 $WIF or more who names its wallet before paying pays half, checked on chain against the address that signs.
 ```
 
-### why does that bring them, or others, back · `flywheel_return` · 221 of 500 chars
+### why does that bring them, or others, back · `flywheel_return` · 243 of 500 chars
 
 ```text
-Ten paid calls make you a $WIF holder, and holders pay half on every call after that. Workers come back for tasks whose USDG is locked in escrow before they start, plus $WIF that buys them the cheaper price when they buy.
+Ten paid calls make you a $WIF holder, and holders who name their wallet pay half on every call after that. Workers come back for tasks whose USDG is locked in escrow before they start, plus $WIF that buys them the cheaper price when they buy.
 ```
 
 ### github repo · `repo_url` · 50 of 300 chars

@@ -990,6 +990,25 @@ test("what it does: the $WIF back and the worker's $WIF have the daily cap, and 
   }
 });
 
+test("every answer gives the holder half only to a holder who names their wallet, and the README's hire gives the worker's $WIF its daily cap", () => {
+  // src/app.ts (tierFor) quotes the holder price only to a buyer that named its wallet before the 402: each sentence of
+  // the form that says holders pay half says so (who_its_for, flywheel_action, flywheel_return, flywheel_wif, what_it_does)
+  let halves = 0;
+  for (const a of ANSWERS) {
+    for (const b of a.blocks) {
+      for (const s of b.split(/(?<=[.!?]"?) (?=[A-Z])/)) {
+        if (!/\bpays? half\b/i.test(s)) continue;
+        halves++;
+        assert.match(s, /\bnames? (?:their|its) wallet\b/, `${a.key}: the half without the named wallet: ${s}`);
+      }
+    }
+  }
+  assert.ok(halves >= 5, `the sentences that give the holder half: ${halves}`);
+  // the README's POST /api/hire: the worker's reward comes out of the budget the cashback draws from (src/wif.ts)
+  const hire = `the worker earns ${wif(CFG.wif.workerReward)} $WIF on top, out of the same ${wif(CFG.wif.dailyBudget)} $WIF a day as the cashback ([Safety](#safety))`;
+  assert.ok(norm(README).includes(hire), `README's POST /api/hire: ${hire}`);
+});
+
 test("the figures around the new rows are the reads': times, dates, the nonce, the identities listed, the tasks' state, the 2 Nov quotes", () => {
   const hhmm = (at: string) => `${Number(at.slice(8, 10))} Nov ${at.slice(11, 16)}`;
   // each later row's time is its transaction's

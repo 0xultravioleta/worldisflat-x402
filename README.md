@@ -20,7 +20,8 @@ it: an HTTP endpoint that quotes a price in USDG, takes one signature, settles o
 - `POST /api/hire` hires a human for a small task. On the live demo the task goes to
   **[Execution Market](https://execution.market)** (`EM_HIRE=on` there since 7 Nov 2026): Flat Fee publishes it there
   as an agent, the merchant wallet pays the worker's bounty into a USDG escrow on Robinhood Chain, Flat Fee approves the
-  answer (the escrow pays the worker), and the worker earns 50 $WIF on top. See
+  answer (the escrow pays the worker), and the worker earns 50 $WIF on top, out of the same 500 $WIF a day as the
+  cashback ([Safety](#safety)). See
   [Hiring a human through Execution Market](#hiring-a-human-through-execution-market) and the
   [first hire it ran on mainnet](#a-hire-through-execution-market-7-nov-2026) (its worker was a team test wallet driven
   by a script, not a person). With `EM_HIRE` off (the default in the code, and `npm run demo`), the task goes on Flat

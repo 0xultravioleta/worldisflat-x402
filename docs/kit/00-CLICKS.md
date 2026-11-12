@@ -13,8 +13,7 @@ The team step has no full-name field; the prize wallet goes only in payout_addre
 2. Step by step, in every field select all (Cmd+A) and paste the block of SUBMISSION.md's *Form fields* over it (the
    form opens with the answers of 2 Nov, and its maxlength cuts the rest without a word); pick or tick the choice
    fields as that section says. *transactions*: delete every item that is there first, then the six hashes, one per
-   line, nothing else. *demo video*: paste the new video's link only once it replaces `<<VIDEO_V2>>` in SUBMISSION.md;
-   until then leave the field as it is.
+   line, nothing else. *demo video*: the block is the new video's link, pasted over the video of 2 Nov.
 3. **Save changes** on each step (the form also saves a step 2 s after typing stops).
 4. On the review step, read every answer back against SUBMISSION.md, and screenshot it.
 5. Optional: an update ("dispatch") on worldisflat.fun, and a post from Saúl's account.

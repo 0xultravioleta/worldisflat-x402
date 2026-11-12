@@ -100,8 +100,6 @@ const READ_TXS = new Map<string, Moved[]>([
 ]);
 const IDENTITY_TXS = new Set(EV.erc8004.parties.flatMap((p) => p.robinhood.transfers.map((t) => t.tx)));
 const MERCHANT_RH = EV.erc8004.parties.find((p) => lc(p.wallet) === lc(EV.merchant))!.robinhood;
-/** the marker SUBMISSION gives demo_video_url until the new video is uploaded (c0der puts the link in) */
-const VIDEO_PENDING = "<<VIDEO_V2>>";
 const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 /** KEY=VALUE lines of the deploy's settings, comments and blank lines skipped */
@@ -374,8 +372,7 @@ test("SUBMISSION's answers: each text within its field's cap, its length written
     assert.match(text, /^[\x20-\x7e]+$/, `${f.key}: printable ASCII on one line`);
     assert.ok(text.length <= f.cap, `${f.key}: ${text.length} chars, above the form's ${f.cap}`);
     assert.equal(a.what, `${text.length} of ${f.cap} chars`, `${f.key}: the heading gives its length and the form's cap`);
-    // the form shows text as typed: no markdown, links as bare URLs (the video's marker is no text to paste: below)
-    if (f.key === "demo_video_url" && text === VIDEO_PENDING) continue;
+    // the form shows text as typed: no markdown, links as bare URLs
     assert.doesNotMatch(text, /\*\*|__|`|\]\(|^[#>*-]|<\/?[a-z]/i, `${f.key}: markdown or HTML`);
   }
   // the choices and the optional list say what to do, with nothing to paste
@@ -426,21 +423,13 @@ test("SUBMISSION's transactions: only hashes, one per line, the Robinhood Chain 
 test("SUBMISSION's answers: the links are the README's, every amount is the deploy's or the run's", () => {
   const top = /^Built for .*Demo video: (\S+) · Live demo: (\S+) ·$/m.exec(README);
   assert.ok(top, "README's links line");
-  // the video: the README's, or the marker while the new one is not uploaded; then the note under it says not to paste
-  // the marker and to leave the form with the README's video (the one published)
-  if (answer("demo_video_url") === VIDEO_PENDING) {
-    const note = norm(section(FORM_SECTION, `### demo video · \`demo_video_url\` · ${VIDEO_PENDING.length} of 300 chars`));
-    assert.ok(note.includes(`Until then, do not paste the marker: leave the field with the video of 2 Nov, ${top[1]}.`), `the note under the video's marker: ${note}`);
-    assert.match(norm(KIT_CLICKS), new RegExp(`paste the new video's link only once it replaces ${esc(VIDEO_PENDING)} in SUBMISSION\\.md; until then leave the field as it is`), "the click list: the marker is not pasted");
-  } else {
-    assert.equal(answer("demo_video_url"), top[1]);
-  }
+  assert.equal(answer("demo_video_url"), top[1]);
   assert.equal(answer("live_url"), top[2]);
   const repo = /`git clone (\S+) && cd/.exec(README);
   assert.ok(repo, "README's clone line");
   assert.equal(answer("repo_url"), repo[1]);
   for (const k of ["repo_url", "demo_video_url", "live_url"]) {
-    if (answer(k) !== VIDEO_PENDING) assert.match(answer(k), /^https:\/\/\S+$/, k);
+    assert.match(answer(k), /^https:\/\/\S+$/, k);
   }
   // each `<n> USDG` and `<n> $WIF` of the answers: a price, the bounty, the worker's pay in the run, the cashback, the
   // reward, the holder minimum or the day's budget

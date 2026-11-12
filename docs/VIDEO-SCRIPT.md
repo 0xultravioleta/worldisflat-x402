@@ -5,7 +5,7 @@ Every hash on screen is real and already on Robinhood Chain mainnet. It replaces
 `kit/video-script.md`, which describe an older terminal shot list.
 
 - **Deadline:** submissions close **Thu 12 Nov 2026, 17:30 UTC** (extended from 2 Nov). We submit early anyway.
-- **Published:** https://youtu.be/oRGfZMNiinI (Unlisted; produced from this script, voice-over ElevenLabs. Logo, thumbnail, subtitles and the YouTube description are in [`video/`](video/)).
+- **Published:** https://youtu.be/kdFZ6c3wrF4, for the submission edit of 12 Nov. This script produced the video of 2 Nov, https://youtu.be/oRGfZMNiinI (Unlisted; voice-over ElevenLabs. Logo, thumbnail, subtitles and the YouTube description are in [`video/`](video/)).
 - **Record:** macOS Cmd+Shift+5 → "Record Entire Screen", microphone on (Options). 1080p is enough. One take is fine.
 - **Before recording:** open the five tabs below in order, zoom the browser to 125% so the text reads on a phone, and
   close anything with keys, `.env`, emails or tokens. Do not connect a wallet.

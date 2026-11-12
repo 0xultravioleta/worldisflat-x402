@@ -1,5 +1,6 @@
 // The HTTP app: the landing page, two x402-paid routes priced in USDG (ask an agent, hire a human), and the task board.
 import { timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { isAddress, getAddress } from "ethers";
@@ -9,6 +10,7 @@ import { WifTransferUnconfirmed, type Chain, type Tier } from "./chain.js";
 import { USDG_DECIMALS, USDG_DOMAIN, WIF_DECIMALS, addressUrl, formatUnits, txUrl, type Config } from "./config.js";
 import { hireExpiry, newEmState, publicEm, publicPause, type EmHire } from "./emhire.js";
 import { buildProof, loadEvidence, type Evidence } from "./proof.js";
+import { llmsTxt, renderLanding, renderProofPage, skillMd, wellKnownX402, type PageCtx, type Quote } from "./site.js";
 import type { Store, Task } from "./store.js";
 import { budgetedWif } from "./wif.js";
 
@@ -31,6 +33,8 @@ export interface AppDeps {
   publishWaitMs?: number;
   /** the dated reads on chain behind GET /api/proof (src/proof.ts); by default docs/evidence, null for none */
   evidence?: Evidence | null;
+  /** the landing page's markup GET / fills in (src/site.ts); by default public/index.html, null to leave / to the static files */
+  pageHtml?: string | null;
 }
 
 type Route = "ask" | "hire";
@@ -97,6 +101,15 @@ export function safeMessage(e: unknown, secrets: (string | null | undefined)[] =
   return m.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]").slice(0, 200);
 }
 
+/** public/index.html, relative to the server's working directory (the Dockerfile copies public); null when it is not there */
+function readPage(): string | null {
+  try {
+    return readFileSync("public/index.html", "utf8");
+  } catch {
+    return null;
+  }
+}
+
 function text(body: unknown, key: string): string | null {
   const v = (body as Record<string, unknown> | null)?.[key];
   if (typeof v !== "string") return null;
@@ -116,6 +129,7 @@ export function createApp({
   emHire = null,
   publishWaitMs = 10_000,
   evidence = loadEvidence(),
+  pageHtml = readPage(),
 }: AppDeps) {
   const app = new Hono();
   // GET /api/proof counts this server's own settlements from here on, on top of the dated reads
@@ -317,8 +331,10 @@ export function createApp({
 
   app.get("/health", (c) => c.json({ ok: true }));
 
-  app.get("/api/info", (c) =>
-    c.json({
+  app.get("/api/info", (c) => c.json(infoBody()));
+
+  // GET /api/info's body: also what the server-rendered pages (src/site.ts) are filled from
+  const infoBody = () => ({
       name: "Flat Fee",
       localFork,
       // the public RPC for the wallet's "add network", never RPC_URL (that one may be private or a local fork)
@@ -341,8 +357,7 @@ export function createApp({
       // Execution Market, whether a hire would be taken right now (the same check as the 503 before the 402), and if
       // not, why, in a fixed sentence per kind (publicPause): the 503's detail can carry EM's words, a wallet or an amount
       hire: cfg.em ? { via: "execution-market", bounty: formatUnits(cfg.em.bounty, USDG_DECIMALS), deadlineHours: cfg.em.deadlineHours, ...hireAvailability() } : { via: "board" },
-    }),
-  );
+  });
 
   function hireAvailability() {
     const p = emHire!.unavailable();
@@ -410,19 +425,48 @@ export function createApp({
     ),
   );
 
-  app.get("/api/ledger", (c) =>
-    c.json(
-      store.ledger(50).map((e) => ({
-        ...e,
-        price: formatUnits(BigInt(e.price), USDG_DECIMALS),
-        settleUrl: e.settleTx ? txUrl(cfg.chain, e.settleTx) : null,
-        cashbackUrl: e.cashbackTx ? txUrl(cfg.chain, e.cashbackTx) : null,
-      })),
-    ),
-  );
+  const ledgerBody = () =>
+    store.ledger(50).map((e) => ({
+      ...e,
+      price: formatUnits(BigInt(e.price), USDG_DECIMALS),
+      settleUrl: e.settleTx ? txUrl(cfg.chain, e.settleTx) : null,
+      cashbackUrl: e.cashbackTx ? txUrl(cfg.chain, e.cashbackTx) : null,
+    }));
+  app.get("/api/ledger", (c) => c.json(ledgerBody()));
 
   // what the landing page shows as proof: every figure with its transactions (src/proof.ts)
-  app.get("/api/proof", (c) => c.json(buildProof(cfg, evidence, store.ledger(1000), store.tasks(), startedAt)));
+  const proofBody = () => buildProof(cfg, evidence, store.ledger(1000), store.tasks(), startedAt);
+  app.get("/api/proof", (c) => c.json(proofBody()));
+
+  // the pages this server renders itself, for readers with no JavaScript (src/site.ts): the landing page filled in,
+  // /proof, and the entries for agents. Every one is built from the same bodies the API serves.
+  const pageCtx = (c: Context): PageCtx => ({
+    cfg,
+    info: infoBody(),
+    proof: proofBody(),
+    ledger: ledgerBody(),
+    tasks: store.tasks().map(view),
+    origin: cfg.publicUrl ?? new URL(c.req.url).origin,
+  });
+  // this server's own unpaid 402 for a call (or its refusal, e.g. a paused hire's 503): nothing reaches the facilitator
+  const quote = async (route: Route): Promise<Quote> => {
+    const body = route === "ask" ? { question: "What is the latest block?" } : { request: "Check that the cafe on 5th street is open and reply in text with today's hours." };
+    const r = await app.request(`/api/${route}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return { status: r.status, body: await r.json().catch(() => null) };
+  };
+  if (pageHtml) {
+    app.get("/", (c) => c.html(renderLanding(pageHtml, pageCtx(c))));
+  }
+  app.get("/proof", (c) => c.html(renderProofPage(pageCtx(c))));
+  app.get("/llms.txt", (c) => c.text(llmsTxt(pageCtx(c))));
+  app.get("/skill.md", async (c) => {
+    const [ask, hire] = [await quote("ask"), await quote("hire")];
+    return c.body(skillMd(pageCtx(c), ask, hire), 200, { "content-type": "text/markdown; charset=utf-8" });
+  });
+  app.get("/.well-known/x402", async (c) => {
+    const quotes = [{ route: "ask" as const, quote: await quote("ask") }, { route: "hire" as const, quote: await quote("hire") }];
+    return c.json(wellKnownX402(pageCtx(c), quotes));
+  });
 
   app.get("/api/tasks", (c) => c.json(store.tasks().map(view)));
   app.get("/api/tasks/:id", (c) => {

@@ -70,6 +70,82 @@ export function proofCopy(p) {
   };
 }
 
+/** "0x1234…abcd" */
+export const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
+
+/** every transaction behind the proof strip, newest first: { at, what, url, tx } (the server and app.js draw these) */
+export function txRows(p) {
+  if (!p) return [];
+  return [
+    ...p.paidCalls.txs.map((t) => ({ t, what: `paid call · ${usdg(t.amount)} USDG` })),
+    ...p.wif.txs.map((t) => ({ t, what: `${t.kind === "reward" ? "$WIF to a worker" : "$WIF cashback"} · ${plain(t.amount)} $WIF` })),
+    ...p.escrows.txs.map((t) => ({ t, what: `hire escrow · ${usdg(t.amount)} USDG` })),
+  ]
+    .sort((a, b) => (a.t.at < b.t.at ? 1 : -1))
+    .map(({ t, what }) => ({ at: utcDate(t.at), what, url: t.url, tx: short(t.tx) }));
+}
+
+/** the line over the work cards */
+export function workMeta(p) {
+  if (!p) return "";
+  const hires = p.work.filter((w) => w.kind === "flatfee").length;
+  return `${hires} Flat Fee ${hires === 1 ? "hire" : "hires"} · ${p.swarmPaid} KarmaKadabra ${p.swarmPaid === 1 ? "task" : "tasks"}, agent to agent`;
+}
+
+/** one card of work paid out of escrow, as words and links (the server and app.js draw these) */
+export function workCardView(w) {
+  const links = [];
+  if (w.escrowUrl) links.push({ href: w.escrowUrl, text: "escrow lock ↗" });
+  if (w.paymentUrl) links.push({ href: w.paymentUrl, text: "payment ↗" });
+  if (w.page) links.push({ href: w.page, text: "task ↗" });
+  return {
+    status: w.status,
+    kind: w.kind === "flatfee" ? "Flat Fee hire" : "KarmaKadabra · agent to agent",
+    ref: w.ref ? ` · #${w.ref}` : "",
+    title: w.title || "Title not in this record",
+    titled: !!w.title,
+    from: w.from,
+    to: w.to,
+    amount: w.bounty ? `${usdg(w.bounty)} USDG in escrow` : "escrow amount not recorded",
+    paid: w.paid ? ` · ${usdg(w.paid)} to whoever delivered` : "",
+    at: utcDate(w.at),
+    links,
+  };
+}
+
+/** a USDG decimal string ("0.5") as integer millionths, or null */
+function micro(v) {
+  const m = /^(\d+)(?:\.(\d{0,6}))?$/.exec(String(v ?? ""));
+  return m ? BigInt(m[1]) * 1000000n + BigInt((m[2] ?? "").padEnd(6, "0")) : null;
+}
+const fromMicro = (n) => usdg(`${n / 1000000n}.${String(n % 1000000n).padStart(6, "0")}`);
+
+/**
+ * Where a hire's money goes, from /api/info (prices, the escrowed bounty, the worker's $WIF) and /api/proof (Execution
+ * Market's cut, measured on a real payment). Null when this server does not hire through Execution Market, or a value
+ * is missing: nothing is made up.
+ */
+export function flowCopy(info, proof) {
+  const hire = micro(info?.prices?.hire?.standard);
+  const holder = micro(info?.prices?.hire?.holder);
+  const bounty = info?.hire?.via === "execution-market" ? micro(info.hire.bounty) : null;
+  const bps = proof?.emFee?.bps;
+  if (hire === null || holder === null || bounty === null || bounty === 0n || !Number.isInteger(bps) || bps < 0 || bps > 10000) return null;
+  const worker = (bounty * BigInt(10000 - bps)) / 10000n;
+  return {
+    pay: fromMicro(hire),
+    payHolder: fromMicro(holder),
+    bounty: fromMicro(bounty),
+    keep: hire > bounty ? fromMicro(hire - bounty) : "0.00",
+    keepHolder: holder > bounty ? fromMicro(holder - bounty) : "0.00",
+    worker: fromMicro(worker),
+    fee: `${bps / 100}%`,
+    feeAmount: fromMicro(bounty - worker),
+    feeUrl: proof.emFee.url,
+    reward: isAbsent(info?.wif?.workerReward) ? null : String(info.wif.workerReward),
+  };
+}
+
 /** what the page says while a server that hires through Execution Market is not taking hires, when it sends no reason */
 export const PAUSED_FALLBACK = "this server is not taking hires right now.";
 

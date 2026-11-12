@@ -21,6 +21,7 @@ interface EvTransfer {
 interface EvTx {
   tx: string;
   at: string;
+  block?: number;
   transfers?: EvTransfer[];
 }
 interface EvTask {
@@ -41,8 +42,11 @@ export interface Evidence {
   block: number;
   merchant: string;
   facilitator: string;
-  transfers: (EvTransfer & { tx: string; at: string; sender: string })[];
+  transfers: (EvTransfer & { tx: string; at: string; sender: string; block?: number })[];
   tasks: EvTask[];
+  /** the ERC-8004 identity registry, and the merchant's agent ids there, as the dated read recorded them */
+  identityRegistry: string | null;
+  merchantAgents: { robinhood: number | null; base: number | null };
   /** task id -> the swarm agent that delivered it, from KarmaKadabra's public graph */
   swarmWorkers: Record<string, string>;
   /** wallet (lower case) -> the swarm agent's name, as Execution Market's public API gives it */
@@ -70,7 +74,20 @@ export function loadEvidence(files: string[] = EVIDENCE_FILES, read: (f: string)
       if (!Array.isArray(mt?.items) || typeof d.merchant !== "string" || typeof d.facilitator !== "string" || typeof d.read_at !== "string") return null;
       const workers: Record<string, string> = {};
       for (const t of d.karmakadabra_graph?.tasks ?? []) if (typeof t?.task === "string" && typeof t?.worker === "string") workers[t.task] = t.worker;
-      ev = { readAt: d.read_at, block: Number(mt.to_block), merchant: d.merchant, facilitator: d.facilitator, transfers: mt.items, tasks: [], swarmWorkers: workers, swarmAgents: {} };
+      const reg = d.execution_market?.merchant_registrations ?? {};
+      const agentId = (n: unknown) => (Number.isInteger(Number(n)) && Number(n) > 0 ? Number(n) : null);
+      ev = {
+        readAt: d.read_at,
+        block: Number(mt.to_block),
+        merchant: d.merchant,
+        facilitator: d.facilitator,
+        transfers: mt.items,
+        tasks: [],
+        swarmWorkers: workers,
+        swarmAgents: {},
+        identityRegistry: typeof d.erc8004?.identity_registry === "string" ? d.erc8004.identity_registry : null,
+        merchantAgents: { robinhood: agentId(reg.robinhood?.agent_id), base: agentId(reg.base?.agent_id) },
+      };
     }
     if (!ev) return null;
     for (const [w, name] of Object.entries(d?.swarm_agents ?? {})) if (typeof name === "string") ev.swarmAgents[w.toLowerCase()] = name;
@@ -90,6 +107,8 @@ export interface ProofTx {
   /** "chain": in the dated reads of docs/evidence; "server": settled by this server since it started */
   source: "chain" | "server";
   kind?: "cashback" | "reward";
+  /** the block, when the dated read recorded it */
+  block?: number;
 }
 
 export interface ProofCounter {
@@ -116,6 +135,9 @@ export interface WorkCard {
   escrowUrl: string | null;
   paymentTx: string | null;
   paymentUrl: string | null;
+  /** the blocks of the lock and of the payment, when the dated read recorded them */
+  escrowBlock?: number;
+  paymentBlock?: number;
   /** the task's page on Execution Market, when its full id is known */
   page: string | null;
 }
@@ -133,6 +155,14 @@ export interface Proof {
   /** tasks of the KarmaKadabra swarm on the same market, paid out of escrow (Flat Fee is not a party) */
   swarmPaid: number;
   work: WorkCard[];
+  /**
+   * Execution Market's cut of an escrow payment, measured on the newest of Flat Fee's hires: the transfers of its
+   * payment transaction (what whoever delivered got, and the rest). Null without such a payment in the dated read.
+   */
+  emFee: { bps: number; tx: string; url: string } | null;
+  /** who signs the settlements and where the merchant's identity is, as the dated read recorded them */
+  facilitator: string | null;
+  identity: { registry: string; robinhood: number | null; base: number | null } | null;
 }
 
 const sum = (txs: ProofTx[], decimals: number) => formatUnits(txs.reduce((a, t) => a + parseUnits(t.amount, decimals), 0n), decimals);
@@ -163,22 +193,28 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
   const escrows: ProofTx[] = [];
   const work: WorkCard[] = [];
   let swarm = 0;
+  let fee: { bps: number; tx: string; url: string; at: string } | null = null;
 
   if (ev) {
     // a paid call: USDG into the merchant in a transaction the x402 facilitator submitted (the merchant's own funding is not)
     const settled = ev.transfers.filter((t) => t.token === "USDG" && lower(t.to) === merchant && lower(t.sender) === lower(ev.facilitator));
-    for (const t of settled) add(paid, { tx: t.tx, at: t.at, amount: t.amount, source: "chain" });
+    for (const t of settled) add(paid, { tx: t.tx, at: t.at, amount: t.amount, source: "chain", block: t.block });
     const payers = new Set(settled.map((t) => lower(t.from)));
     // $WIF out of the merchant: back to someone who paid a call (cashback), or to a worker (reward)
     for (const t of ev.transfers.filter((t) => t.token === "$WIF" && lower(t.from) === merchant)) {
-      add(wif, { tx: t.tx, at: t.at, amount: t.amount, source: "chain", kind: payers.has(lower(t.to)) ? "cashback" : "reward" });
+      add(wif, { tx: t.tx, at: t.at, amount: t.amount, source: "chain", kind: payers.has(lower(t.to)) ? "cashback" : "reward", block: t.block });
     }
     for (const t of ev.tasks) {
       const mine = lower(t.agent_id) === merchant;
       const lock = (t.escrow_tx?.transfers ?? []).find((x) => lower(x.from) === lower(t.agent_id));
-      if (mine && lock && t.escrow_tx) add(escrows, { tx: t.escrow_tx.tx, at: t.escrow_tx.at, amount: lock.amount, source: "chain" });
+      if (mine && lock && t.escrow_tx) add(escrows, { tx: t.escrow_tx.tx, at: t.escrow_tx.at, amount: lock.amount, source: "chain", block: t.escrow_tx.block });
       // what the escrow paid whoever delivered: the larger of the payment's transfers (the other one is Execution Market's fee)
       const pay = [...(t.payment_tx?.transfers ?? [])].sort((a, b) => Number(b.amount) - Number(a.amount))[0];
+      if (mine && pay && t.payment_tx && hashOk(t.payment_tx.tx) && (!fee || t.payment_tx.at > fee.at)) {
+        const total = (t.payment_tx.transfers ?? []).reduce((a, x) => a + parseUnits(x.amount, USDG_DECIMALS), 0n);
+        const toWorker = parseUnits(pay.amount, USDG_DECIMALS);
+        if (total > 0n) fee = { bps: Number(((total - toWorker) * 10000n) / total), tx: t.payment_tx.tx, url: txUrl(chain, t.payment_tx.tx), at: t.payment_tx.at };
+      }
       const buyer = ev.swarmAgents[lower(t.agent_id)];
       const worker = (t.id && ev.swarmWorkers[t.id]) || (pay ? ev.swarmAgents[lower(pay.to)] : undefined);
       if (!mine && t.payment_tx?.tx) swarm++;
@@ -197,6 +233,8 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
         escrowUrl: t.escrow_tx?.tx ? txUrl(chain, t.escrow_tx.tx) : null,
         paymentTx: t.payment_tx?.tx ?? null,
         paymentUrl: t.payment_tx?.tx ? txUrl(chain, t.payment_tx.tx) : null,
+        escrowBlock: t.escrow_tx?.block,
+        paymentBlock: t.payment_tx?.block,
         page: t.id ? `https://execution.market/tasks/${t.id}` : null,
       });
     }
@@ -255,5 +293,8 @@ export function buildProof(cfg: Config, evidence: Evidence | null, ledger: Ledge
     escrows: counter(escrows, USDG_DECIMALS),
     swarmPaid: swarm,
     work: work.slice(0, 12),
+    emFee: fee ? { bps: fee.bps, tx: fee.tx, url: fee.url } : null,
+    facilitator: ev ? ev.facilitator : null,
+    identity: ev?.identityRegistry ? { registry: ev.identityRegistry, ...ev.merchantAgents } : null,
   };
 }

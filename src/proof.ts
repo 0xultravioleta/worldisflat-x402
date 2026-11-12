@@ -249,7 +249,7 @@ export function buildProof(
     const em = t.em;
     // Only a hire whose escrow paid out counts and shows: one still open has nothing locked yet, and one that expired
     // has nothing locked or got its lock back. Neither was "paid from escrow", and no card says it is.
-    if (!em?.taskId || !em.escrowTx || !em.paymentTx || !hashOk(em.escrowTx) || !hashOk(em.paymentTx)) continue;
+    if (!em?.taskId || !hashOk(em.escrowTx) || !hashOk(em.paymentTx)) continue;
     if (work.some((w) => w.ref === em.taskId!.slice(0, 8))) continue;
     if (bounty) add(escrows, { tx: em.escrowTx, at: em.assignedAt ?? t.createdAt, amount: bounty, source: "server" });
     work.push({

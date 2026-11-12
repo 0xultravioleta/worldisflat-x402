@@ -265,6 +265,7 @@ test("this server's settlements at the holder and the hire price count at their 
   const fork = buildProof(mainnet(), ev, ledger, [emTask("77777777", { step: "completed", escrowTx: hash("e8"), paymentTx: hash("f8") })], "x", { localFork: true });
   assert.equal(fork.paidCalls.count, 4);
   assert.equal(fork.escrows.count, 2);
+  assert.ok(!fork.work.some((w) => w.ref === "77777777"), "a fork's hire is not drawn");
 });
 
 test("the evidence files: without the merchant's read there is no proof from it; a later file that cannot be read is skipped", () => {
@@ -315,6 +316,15 @@ test("GET /api/proof on the live demo's wallet serves the figures; every server 
   assert.equal(after1.paidCalls.count, 5);
   assert.equal(after1.paidCalls.amount, "0.7");
   assert.deepEqual(after1.paidCalls.txs.filter((t: { source: string }) => t.source === "server").map((t: { tx: string }) => t.tx), [hash("e1")]);
+  // served as a local fork (npm run demo), the same settlement is not counted: it is not on the chain the explorer shows
+  const forkStore = new Store(tmp());
+  forkStore.addLedger({ kind: "ask", network: "eip155:4663", payer: Wallet.createRandom().address, tier: "standard", price: "100000", settleTx: hash("e2"), cashbackTx: null });
+  const forkApp = createApp({ cfg, chain, store: forkStore, log: () => {}, localFork: true });
+  const port3 = nextPort++;
+  servers.push(serve({ fetch: forkApp.fetch, port: port3 }));
+  const onFork = await (await fetch(`http://127.0.0.1:${port3}/api/proof`)).json();
+  assert.equal(onFork.paidCalls.count, 4);
+  assert.ok(!onFork.paidCalls.txs.some((t: { tx: string }) => t.tx === hash("e2")));
   // with no evidence at all, the figures are empty and the page says nothing was read
   const none = createApp({ cfg, chain, store: new Store(tmp()), log: () => {}, evidence: null });
   const port2 = nextPort++;

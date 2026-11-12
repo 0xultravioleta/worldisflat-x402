@@ -422,7 +422,7 @@ export function createApp({
   );
 
   // what the landing page shows as proof: every figure with its transactions (src/proof.ts)
-  app.get("/api/proof", (c) => c.json(buildProof(cfg, evidence, store.ledger(1000), store.tasks(), startedAt)));
+  app.get("/api/proof", (c) => c.json(buildProof(cfg, evidence, store.ledger(Number.MAX_SAFE_INTEGER), store.tasks(), startedAt, { localFork })));
 
   app.get("/api/tasks", (c) => c.json(store.tasks().map(view)));
   app.get("/api/tasks/:id", (c) => {

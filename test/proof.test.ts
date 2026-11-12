@@ -81,15 +81,15 @@ test("the work cards: Flat Fee's two hires with their test worker named as such,
   assert.equal(swarm.length, 6);
   for (const w of hires) {
     assert.equal(w.to, TEST_WORKER_LABEL);
-    assert.match(w.from, /^Flat Fee · ERC-8004 agent (22487|1170265)$/);
+    assert.match(w.from, /^Flat Fee · ERC-8004 agent (22487 \(Robinhood Chain\)|1170265 \(Base\))$/);
     assert.equal(w.status, "released");
     assert.equal(w.bounty, "0.2");
     assert.equal(w.paid, "0.174");
     assert.ok(w.page?.startsWith(`https://execution.market/tasks/${w.ref}-`), String(w.page));
   }
   // the 7 Nov hire was published as the Base identity, the 8 Nov one as the Robinhood Chain one
-  assert.equal(hires.find((w) => w.ref === "3175424d")!.from, "Flat Fee · ERC-8004 agent 1170265");
-  assert.equal(hires.find((w) => w.ref === "d161b088")!.from, "Flat Fee · ERC-8004 agent 22487");
+  assert.equal(hires.find((w) => w.ref === "3175424d")!.from, "Flat Fee · ERC-8004 agent 1170265 (Base)");
+  assert.equal(hires.find((w) => w.ref === "d161b088")!.from, "Flat Fee · ERC-8004 agent 22487 (Robinhood Chain)");
   for (const w of swarm) {
     assert.doesNotMatch(`${w.from} ${w.to}`, /Flat Fee/);
     assert.match(w.from, /^kk-0x(yuls|jokker) · ERC-8004 agent 2339[45]$/);
@@ -130,6 +130,7 @@ test("a paid call is USDG into the merchant in a transaction the facilitator sen
     tasks: [],
     swarmWorkers: {},
     swarmAgents: {},
+    merchantAgents: { robinhood: null, base: null },
     transfers: [
       { token: "USDG", from: "0x1111111111111111111111111111111111111111", to: MERCHANT.toLowerCase(), amount: "0.1", tx: hash("a1"), at: "2026-11-01T00:00:01Z", sender: FACILITATOR.toLowerCase() },
       // the merchant's own funding: not sent by the facilitator
@@ -191,8 +192,8 @@ test("this server's own settlements add to the dated reads, each transaction onc
   assert.equal(p.serverSince, "2026-11-13T09:00:00.000Z");
 });
 
-test("a hire this server published on Execution Market shows as a card and its escrow counts, with the configured bounty", () => {
-  const cfg = mainnet({
+const emCfg = () =>
+  mainnet({
     EM_HIRE: "on",
     EM_API_URL: "https://em.test",
     MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey,
@@ -201,21 +202,69 @@ test("a hire this server published on Execution Market shows as a card and its e
     EM_TOKEN_COLLECTOR_ADDRESS: Wallet.createRandom().address,
     EM_BOUNTY_USDG: "0.2",
   });
-  const em = { step: "assigned", key: "k", taskId: "aaaaaaaa-0000-4000-8000-000000000000", status: "accepted", deadline: null, executorId: "e", workerWallet: "0x5555555555555555555555555555555555555555", escrowTx: hash("d1"), skipped: [], signed: [], accepted: null, approvals: 0, needsOrder: false, assignedAt: "2026-11-13T12:00:00.000Z", rejected: [], approval: null, paymentTx: null, lastError: null, updatedAt: "2026-11-13T12:00:00.000Z" };
-  const t: Task = { id: "t9", createdAt: "2026-11-13T11:59:00.000Z", status: "open", request: "Check the cafe.", payer: "0x1111111111111111111111111111111111111111", paidTx: hash("d0"), worker: null, answer: null, doneAt: null, rewardTx: null, via: "em", em: em as Task["em"] };
-  const p = buildProof(cfg, loadEvidence(), [], [t], "x");
-  assert.equal(p.escrows.count, 3);
-  assert.equal(p.escrows.amount, "0.6");
-  const card = p.work[0];
-  assert.equal(card.ref, "aaaaaaaa");
-  assert.equal(card.kind, "flatfee");
-  assert.equal(card.status, "assigned");
-  assert.equal(card.bounty, "0.2");
-  assert.equal(card.escrowUrl, `${EXPLORER}/tx/${hash("d1")}`);
-  assert.equal(card.page, "https://execution.market/tasks/aaaaaaaa-0000-4000-8000-000000000000");
+const emTask = (ref: string, over: Record<string, unknown>): Task => {
+  const em = { step: "published", key: "k", taskId: `${ref}-0000-4000-8000-000000000000`, status: "published", deadline: null, executorId: null, workerWallet: null, escrowTx: null, skipped: [], signed: [], accepted: null, approvals: 0, needsOrder: false, assignedAt: null, rejected: [], approval: null, paymentTx: null, lastError: null, updatedAt: "2026-11-13T12:00:00.000Z", ...over };
+  return { id: ref.slice(0, 8), createdAt: "2026-11-13T11:59:00.000Z", status: "open", request: `hire ${ref}`, payer: "0x1111111111111111111111111111111111111111", paidTx: hash("d0"), worker: null, answer: null, doneAt: null, rewardTx: null, via: "em", em: em as Task["em"] };
+};
+
+test("a hire this server published counts and shows only once its escrow paid out: published, expired, assigned or refunded say nothing about escrow", () => {
+  const cfg = emCfg();
+  const notPaidOut = [
+    // on Execution Market, nobody took it yet: nothing locked
+    emTask("11111111", { step: "published" }),
+    // expired with nobody assigned: nothing was ever locked
+    emTask("22222222", { step: "expired", status: "expired" }),
+    // locked, then the worker did not deliver: the lock went back to the merchant (the task keeps its escrowTx)
+    emTask("33333333", { step: "expired", status: "expired", escrowTx: hash("e3"), workerWallet: "0x5555555555555555555555555555555555555555" }),
+    // locked and still being worked on: not paid out yet
+    emTask("44444444", { step: "assigned", status: "accepted", escrowTx: hash("e4"), workerWallet: "0x5555555555555555555555555555555555555555" }),
+    // a payment hash that is not one
+    emTask("55555555", { step: "completed", status: "completed", escrowTx: hash("e5"), paymentTx: "0xabc" }),
+  ];
+  const p = buildProof(cfg, loadEvidence(), [], notPaidOut, "x");
+  assert.equal(p.escrows.count, 2, "only the two hires the dated read shows paid out");
+  assert.equal(p.escrows.amount, "0.4");
+  assert.deepEqual(p.work.filter((w) => w.kind === "flatfee").map((w) => w.ref).sort(), ["3175424d", "d161b088"]);
+  // paid out of escrow: its lock and its payment recorded, the configured bounty, a card that says released
+  const done = emTask("66666666", { step: "completed", status: "completed", escrowTx: hash("e6"), paymentTx: hash("f6"), assignedAt: "2026-11-13T12:00:00.000Z" });
+  const q = buildProof(cfg, loadEvidence(), [], [...notPaidOut, done], "x");
+  assert.equal(q.escrows.count, 3);
+  assert.equal(q.escrows.amount, "0.6");
+  const card = q.work[0];
+  assert.deepEqual([card.ref, card.kind, card.status, card.bounty], ["66666666", "flatfee", "released", "0.2"]);
+  assert.equal(card.escrowUrl, `${EXPLORER}/tx/${hash("e6")}`);
+  assert.equal(card.paymentUrl, `${EXPLORER}/tx/${hash("f6")}`);
+  assert.equal(card.page, "https://execution.market/tasks/66666666-0000-4000-8000-000000000000");
   // a task the dated read already shows is not drawn twice
-  const again = { ...t, em: { ...em, taskId: "d161b088-ae87-44df-8ed3-5af09018c779", escrowTx: null } as Task["em"] };
+  const again = emTask("d161b088", { step: "completed", escrowTx: hash("e7"), paymentTx: hash("f7") });
+  (again.em as { taskId: string }).taskId = "d161b088-ae87-44df-8ed3-5af09018c779";
   assert.equal(buildProof(cfg, loadEvidence(), [], [again], "x").work.filter((w) => w.ref === "d161b088").length, 1);
+});
+
+test("this server's settlements at the holder and the hire price count at their amount; another network, a bad hash, a cashback of 0 and a local fork do not", () => {
+  const ev = loadEvidence()!;
+  const entry = (over: Partial<LedgerEntry>): LedgerEntry => ({ id: "x", kind: "ask", at: "2026-11-13T10:00:00.000Z", network: "eip155:4663", payer: "0x1111111111111111111111111111111111111111", tier: "standard", price: "100000", settleTx: null, cashbackTx: null, ...over });
+  const ledger = [
+    entry({ id: "h", kind: "hire", tier: "holder", price: "250000", settleTx: hash("a7") }),
+    entry({ id: "s", kind: "hire", price: "500000", settleTx: hash("a8") }),
+    entry({ id: "a", tier: "holder", price: "50000", settleTx: hash("a9"), cashbackTx: hash("b7") }),
+    // a settlement on another network: not this chain's
+    entry({ id: "n", network: "eip155:46630", settleTx: hash("b8") }),
+    // 63 hex digits: not a transaction hash
+    entry({ id: "l", settleTx: `0x${"ab".repeat(31)}a` }),
+  ];
+  // no cashback configured: a cashbackTx on a row is not counted as $WIF sent
+  const p = buildProof(mainnet(), ev, ledger, [], "x");
+  assert.deepEqual(p.paidCalls.txs.filter((t) => t.source === "server").map((t) => [t.tx, t.amount]).sort(), [[hash("a7"), "0.25"], [hash("a8"), "0.5"], [hash("a9"), "0.05"]].sort());
+  assert.equal(p.paidCalls.amount, "1.4");
+  assert.equal(p.wif.cashback.count, 4, "the dated read's four, none from the server");
+  // with a cashback configured, the row's cashback counts at the configured amount
+  const withCashback = buildProof(mainnet({ WIF_CASHBACK: "10", MERCHANT_PRIVATE_KEY: Wallet.createRandom().privateKey }), ev, ledger, [], "x");
+  assert.deepEqual(withCashback.wif.cashback, { count: 5, amount: "50.0" });
+  // a local fork: its settlements are not on the chain the explorer shows, so none counts
+  const fork = buildProof(mainnet(), ev, ledger, [emTask("77777777", { step: "completed", escrowTx: hash("e8"), paymentTx: hash("f8") })], "x", { localFork: true });
+  assert.equal(fork.paidCalls.count, 4);
+  assert.equal(fork.escrows.count, 2);
 });
 
 test("the evidence files: without the merchant's read there is no proof from it; a later file that cannot be read is skipped", () => {
@@ -228,6 +277,13 @@ test("the evidence files: without the merchant's read there is no proof from it;
   assert.equal(loadEvidence(["b"], read), null, "the swarm file alone is not a read of the merchant");
   files.bad = "{ not json";
   assert.equal(loadEvidence(["bad"], read), null);
+  // a task with its lock but no payment out of the escrow recorded is not work paid out of escrow: it is left out
+  const locked = JSON.parse(files.b);
+  locked.execution_market.tasks[0].payment_tx = null;
+  files.locked = JSON.stringify(locked);
+  const withLocked = loadEvidence(["a", "locked"], read)!;
+  assert.equal(withLocked.tasks.length, raw.execution_market.tasks.length + swarmRaw.execution_market.tasks.length - 1);
+  assert.ok(!withLocked.tasks.some((t) => t.id === locked.execution_market.tasks[0].id));
   const onlyMain = loadEvidence(["a", "missing"], read)!;
   assert.equal(onlyMain.tasks.length, raw.execution_market.tasks.length);
   const both = loadEvidence(["a", "b"], read)!;
@@ -272,7 +328,7 @@ test("GET /api/proof on the live demo's wallet serves the figures; every server 
 test("the proof strip's words: figures only when read, '—' and a reason otherwise, never 0", () => {
   const p = buildProof(mainnet(), loadEvidence(), [], [], "2026-11-12T18:00:00.000Z");
   const c = proofCopy(JSON.parse(JSON.stringify(p)));
-  assert.deepEqual([c.read, c.calls, c.usdg, c.wif, c.wifSub, c.escrows, c.escrowSub], [true, "4", "0.60", "140", "4 cashback · 2 to workers", "2", "0.40 USDG locked for workers"]);
+  assert.deepEqual([c.read, c.calls, c.usdg, c.wif, c.wifSub, c.escrows, c.escrowSub], [true, "4", "0.60", "140", "4 cashback · 2 to workers", "2", "0.40 USDG escrowed, then released"]);
   assert.equal(
     c.note,
     "Read on Robinhood Chain on 12 Nov 2026, 03:14 UTC (block 112,214,177), plus every call this server settled since 12 Nov 2026, 18:00 UTC. Up to that read, every payer was a wallet of the team.",
@@ -299,4 +355,12 @@ test("the page names the merchant's ERC-8004 identities the evidence records, an
   assert.match(html, /writes no ratings on Robinhood Chain yet/);
   // the swarm's count is the server's (swarmPaid), not typed in the page
   assert.doesNotMatch(html.replace(/<!--[\s\S]*?-->/g, ""), /\b(six|6) (swarm |agent-to-agent )?tasks\b/i);
+});
+
+test("the page loads nothing from another site until the visitor asks: no external src, the video is a button", () => {
+  const html = readFileSync("public/index.html", "utf8");
+  assert.equal([...html.matchAll(/\bsrc="https?:/g)].length, 0);
+  assert.match(html, /<button class="video-play" id="video-play" type="button" data-video="[\w-]+"/);
+  // the cashback is promised with its daily cap
+  assert.match(html, /\$WIF back on every paid call, up to a daily budget<\/span>/);
 });

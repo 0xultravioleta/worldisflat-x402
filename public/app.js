@@ -213,7 +213,7 @@ function workCard(w) {
   if (w.escrowUrl) links.append(link(w.escrowUrl, "escrow lock ↗"));
   if (w.paymentUrl) links.append(link(w.paymentUrl, "payment ↗"));
   if (w.page) links.append(link(w.page, "task ↗"));
-  const amount = el("p", { class: "job-amt" }, w.bounty ? `${usdg(w.bounty)} USDG in escrow` : "escrow amount not recorded");
+  const amount = el("p", { class: "job-amt" }, w.bounty ? `${usdg(w.bounty)} USDG escrowed` : "escrow amount not recorded");
   if (w.paid) amount.append(el("span", { class: "w" }, ` · ${usdg(w.paid)} to whoever delivered`));
   return el("li", { class: "job" },
     el("p", { class: "job-top" }, el("span", { class: `st ${w.status}` }, w.status), w.kind === "flatfee" ? "Flat Fee hire" : "KarmaKadabra · agent to agent", w.ref ? ` · #${w.ref}` : ""),
@@ -239,7 +239,10 @@ async function loadProof() {
   }
 }
 
-// the demo video: a poster until clicked, then YouTube's player (nothing loads from YouTube before that)
+// a figure of the proof strip opens the list of its transactions
+for (const a of document.querySelectorAll('a.stat[href="#txs"]')) a.onclick = () => ($("#txs").open = true);
+
+// the demo video: a plain button (no thumbnail, nothing from YouTube) until clicked; the click loads YouTube's player
 $("#video-play").onclick = (e) => {
   const id = e.currentTarget.dataset.video;
   const frame = el("iframe", {

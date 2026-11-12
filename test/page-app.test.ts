@@ -384,7 +384,17 @@ test("on the live demo's wallet the proof strip, the transactions and the escrow
     assert.equal(visibleText(hire.querySelector(".st")!), "released");
     assert.match(visibleText(hire), /Flat Fee hire · #d161b088/);
     assert.match(visibleText(hire), /Flat Fee's test worker \(a team wallet run by a script\)/);
-    assert.match(visibleText(hire), /0\.20 USDG in escrow · 0\.174 to whoever delivered/);
+    assert.match(visibleText(hire), /0\.20 USDG escrowed · 0\.174 to whoever delivered/);
+    assert.match(visibleText(hire), /Flat Fee · ERC-8004 agent 22487 \(Robinhood Chain\)/);
+    assert.doesNotMatch(visibleText($("#work")), /in escrow/);
+    // a figure opens the list of its transactions
+    assert.equal($("#txs").open, false);
+    await $("#stat-calls").click();
+    assert.equal($("#txs").open, true);
+    // the 4-second redraw draws the proof again only when /api/proof changed: the same nodes stay
+    const before = doc.querySelector("#work li");
+    await p.redraw();
+    assert.ok(doc.querySelector("#work li") === before, "an unchanged proof is not drawn again");
   } finally {
     p.close();
   }

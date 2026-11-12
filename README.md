@@ -3,7 +3,7 @@
 > Ask an agent or hire a human for a flat USDG fee per call, paid with one signature over x402 on Robinhood Chain.
 > Paid calls send **$WIF** back (up to a daily budget), and $WIF holders pay half.
 
-Built for the **world is flat hackathon** (Robinhood Chain). Demo video: https://youtu.be/kdFZ6c3wrF4 · Live demo: https://flatfee.ultravioletadao.xyz ·
+Built for the **world is flat hackathon** (Robinhood Chain). Demo video: https://youtu.be/Ty0fcVDos1I · Live demo: https://flatfee.ultravioletadao.xyz ·
 Form answers: [SUBMISSION.md](SUBMISSION.md) · Video shot list: [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md)
 
 ## The problem

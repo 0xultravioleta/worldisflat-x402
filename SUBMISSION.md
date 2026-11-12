@@ -38,7 +38,7 @@ $WIF use and the flywheel, the fields that score, stay the center.
 | what happens to $wif `flywheel_wif` | 10 $WIF back after a call, 500 a day, 50 to each human who completes a task | the 50 only for an answer Flat Fee approves, on top of the escrow; the holder half checked on chain against the signer | as the code does it |
 | why they come back `flywheel_return` | ten paid calls make a holder; workers paid in $WIF | adds the worker's pay locked in escrow before the work starts, and the $WIF that buys workers the cheaper price | why each side comes back, with $WIF |
 | github repo `repo_url` | https://github.com/0xultravioleta/worldisflat-x402 | the same | no change |
-| demo video `demo_video_url` | https://youtu.be/oRGfZMNiinI | https://youtu.be/kdFZ6c3wrF4 | the 2 Nov video shows none of Execution Market, the swarm or ERC-8004 |
+| demo video `demo_video_url` | https://youtu.be/oRGfZMNiinI | https://youtu.be/Ty0fcVDos1I | the 2 Nov video shows none of Execution Market, the swarm or ERC-8004 |
 | live link `live_url` | https://flatfee.ultravioletadao.xyz | the same | no change |
 | transactions `tx_hashes` | the 2 Nov draft was prose with two explorer links | the six $WIF transfers the merchant has made on mainnet, hashes only | the field asks for transactions where the product uses $wif, and splits at spaces and commas |
 | how it's made `how_its_made` | how it was built and its challenges (22 fork checks; USDG's `version()`; pricing the cashback) | the stack, Execution Market and the escrow, the two ERC-8004 identities, the hardest part, the two hires on mainnet with the sentence about their worker, the swarm's two tasks with their USDG amounts (agent to agent), and the known limit | the hire and the identities are what was built since; the swarm shows the market in use |
@@ -150,7 +150,7 @@ https://github.com/0xultravioleta/worldisflat-x402
 ### demo video · `demo_video_url` · 28 of 300 chars
 
 ```text
-https://youtu.be/kdFZ6c3wrF4
+https://youtu.be/Ty0fcVDos1I
 ```
 
 ### live link · `live_url` · 35 of 300 chars
@@ -232,8 +232,8 @@ texts above and the README against it.
 - [ ] Saúl opens "edit submission", pastes each block above into its field in the form's order, picks or ticks the
   choice fields as written, and saves each step (the form also saves a step 2 s after typing stops).
 - [ ] On the review step, every answer read back against this section: *transactions* as the six hashes and nothing
-  else, *how it's made* with the sentence about the test worker, *demo video* with a real link (the new one, or the one
-  of 2 Nov while the new one is not up). Before 12 Nov 2026, 17:30 UTC.
+  else, *how it's made* with the sentence about the test worker, *demo video* with the new video's link. Before 12 Nov
+  2026, 17:30 UTC.
 - [x] The six transactions are every $WIF transfer of the merchant on Robinhood Chain mainnet, read on chain on 12 Nov
   2026, each one on a README row with its amount and direction. The hire of 7 Nov's hashes and amounts are the ones
   `npm run e2e:hire` printed
